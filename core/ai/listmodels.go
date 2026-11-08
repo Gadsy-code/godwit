@@ -38,8 +38,8 @@ func listModelIDs(ctx context.Context, c *http.Client, kind, base, url, apiKey s
 }
 
 // ListModelsNamed is ListModels with display names. It reads the API's
-// data[].id shape, Sign in with ChatGPT's models[].slug/display_name and
-// xAI's models[].id.
+// data[].id shape, Sign in with ChatGPT's models[].slug/display_name, xAI's
+// models[].id and Liquid's models[].name.
 func ListModelsNamed(ctx context.Context, c *http.Client, kind, baseURL, apiKey string) ([]Model, error) {
 	base := strings.TrimRight(baseURL, "/")
 	return listModelsAt(ctx, c, kind, base, modelsURL(ctx, c, base), apiKey) // the URL before the list's own timeout: a version lookup has its own
@@ -100,10 +100,10 @@ func listModelsAt(ctx context.Context, c *http.Client, kind, base, url, apiKey s
 			ID         string
 			Visibility string
 		}
-		Models []struct { // Sign in with ChatGPT and the Codex backend: slug; xAI's language-models: id
-			ID, Slug    string
-			DisplayName string `json:"display_name"`
-			Visibility  string
+		Models []struct { // Sign in with ChatGPT and the Codex backend: slug; xAI's language-models: id; Liquid's decisions: name
+			ID, Slug, Name string
+			DisplayName    string `json:"display_name"`
+			Visibility     string
 		}
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&out); err != nil {
@@ -116,7 +116,7 @@ func listModelsAt(ctx context.Context, c *http.Client, kind, base, url, apiKey s
 		}
 	}
 	for _, m := range out.Models {
-		if id := cmp.Or(m.Slug, m.ID); id != "" && (m.Visibility == "" || m.Visibility == "list") {
+		if id := cmp.Or(m.Slug, m.ID, m.Name); id != "" && (m.Visibility == "" || m.Visibility == "list") {
 			ms = append(ms, Model{id, m.DisplayName})
 		}
 	}
