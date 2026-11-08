@@ -560,6 +560,8 @@
   "settings_account_mailbox_help": "Les serveurs indiquent généralement quels dossiers correspondent aux Brouillons, Envoyés et Indésirables, et Godwit les détecte automatiquement ; en cas d’erreur, modifiez-les ici. La purge supprime définitivement les e-mails du serveur, ils disparaîtront donc aussi de vos autres appareils.",
   "settings_account_mailbox_none": "Ne pas utiliser",
   "settings_account_mailbox_trash_help": "Les e-mails supprimés sont d’abord déplacés ici",
+  "settings_account_label_keywords": "Synchroniser les libellés comme mots-clés IMAP",
+  "settings_account_label_keywords_help": "Vos libellés sont enregistrés sur le serveur et visibles dans d’autres applis et outils de messagerie ; les mots-clés du serveur apparaissent ici comme libellés. Le serveur doit accepter les mots-clés personnalisés.",
   "settings_account_make_default": "Compte d’envoi par défaut",
   "settings_account_make_default_help": "Utilisé lors de la rédaction depuis Toutes les boîtes",
   "settings_account_name": "Nom d’expéditeur",

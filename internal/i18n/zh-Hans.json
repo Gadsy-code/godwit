@@ -560,6 +560,8 @@
   "settings_account_mailbox_help": "服务器一般会标明哪个文件夹是草稿、已发送、垃圾邮件，Godwit 会自动识别；认错了再在这里改。清除是从服务器上永久删除，其他设备也会看不到。",
   "settings_account_mailbox_none": "不使用",
   "settings_account_mailbox_trash_help": "删除的邮件先移到这里",
+  "settings_account_label_keywords": "将标签同步为 IMAP 关键词",
+  "settings_account_label_keywords_help": "你打的标签会写到服务器，其他邮件应用和工具也能看到；服务器上的关键词也会显示为标签。需要服务器支持自定义关键词。",
   "settings_account_make_default": "设为默认发件账户",
   "settings_account_make_default_help": "在「全部收件箱」里写邮件时使用",
   "settings_account_name": "发件人名称",

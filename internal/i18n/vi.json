@@ -560,6 +560,8 @@
   "settings_account_mailbox_help": "Máy chủ thường đánh dấu thư mục nào là Thư nháp, Đã gửi và Thư rác, và Godwit sẽ tự động nhận diện; nếu nhận diện sai, bạn có thể đổi tại đây. Xóa vĩnh viễn sẽ xóa hẳn thư khỏi máy chủ nên các thiết bị khác của bạn cũng sẽ mất thư đó.",
   "settings_account_mailbox_none": "Không sử dụng",
   "settings_account_mailbox_trash_help": "Thư đã xóa sẽ được chuyển vào đây trước",
+  "settings_account_label_keywords": "Đồng bộ nhãn dưới dạng từ khóa IMAP",
+  "settings_account_label_keywords_help": "Nhãn bạn gắn được ghi lên máy chủ và hiện trong các ứng dụng, công cụ thư khác; từ khóa trên máy chủ cũng hiện ở đây dưới dạng nhãn. Máy chủ phải hỗ trợ từ khóa tùy chỉnh.",
   "settings_account_make_default": "Tài khoản gửi mặc định",
   "settings_account_make_default_help": "Được dùng khi soạn thư từ Tất cả hộp thư đến",
   "settings_account_name": "Tên người gửi",

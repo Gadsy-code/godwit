@@ -560,6 +560,8 @@
   "settings_account_mailbox_help": "일반적으로 서버에서 임시 보관함, 보낸 편지함, 정크 메일 폴더를 지정하며 Godwit이 이를 자동으로 인식합니다. 잘못 인식된 경우 여기에서 변경하세요. 영구 삭제를 수행하면 서버에서 메일이 완전히 삭제되어 다른 기기에서도 볼 수 없게 됩니다.",
   "settings_account_mailbox_none": "사용 안 함",
   "settings_account_mailbox_trash_help": "삭제한 메일이 먼저 여기로 이동합니다",
+  "settings_account_label_keywords": "라벨을 IMAP 키워드로 동기화",
+  "settings_account_label_keywords_help": "지정한 라벨이 서버에 기록되어 다른 메일 앱과 도구에서도 보이고, 서버의 키워드도 라벨로 표시됩니다. 서버가 사용자 지정 키워드를 지원해야 합니다.",
   "settings_account_make_default": "기본 발송 계정으로 설정",
   "settings_account_make_default_help": "‘모든 받은 편지함’에서 메일을 작성할 때 사용됩니다",
   "settings_account_name": "보낸 사람 이름",

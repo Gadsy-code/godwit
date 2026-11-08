@@ -43,6 +43,7 @@ type Account struct {
 	Icon                                    string // '' the provider's mark, label:<name>, brand:<provider id> or image:<n> (AccountIcon)
 	AIInstructions                          string // the user's facts and guidelines for Wit drafting from this account
 	IsDefault                               bool
+	LabelKeywords                           bool // labels and the server's IMAP keywords follow each other (ADR 0035)
 	Sync                                    SyncRange
 	Folders                                 int // folders synced so far: 0 before the first sync
 	AuthType, Status                        string
@@ -100,6 +101,7 @@ type AccountPatch struct {
 	Icon                   *string // '', label:<name> or brand:<provider id>
 	IconImage              []byte  // an uploaded png, jpeg, gif, webp or svg: Icon becomes image:<n>
 	AIInstructions         *string // trimmed, at most MaxAIInstructions runes
+	LabelKeywords          *bool   // turning it on imports the server's keywords at once
 }
 
 // AccountIcon is an account's uploaded icon image.

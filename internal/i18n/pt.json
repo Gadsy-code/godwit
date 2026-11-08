@@ -560,6 +560,8 @@
   "settings_account_mailbox_help": "Os servidores geralmente indicam qual pasta é Rascunhos, Enviados e Lixo Eletrônico, e o Godwit as reconhece automaticamente; se alguma estiver incorreta, altere-a aqui. A limpeza definitiva exclui os e-mails do servidor para sempre, fazendo com que desapareçam também dos seus outros dispositivos.",
   "settings_account_mailbox_none": "Não usar",
   "settings_account_mailbox_trash_help": "Os e-mails excluídos são movidos primeiro para cá",
+  "settings_account_label_keywords": "Sincronizar etiquetas como palavras-chave IMAP",
+  "settings_account_label_keywords_help": "Suas etiquetas são gravadas no servidor e aparecem em outros apps e ferramentas de e-mail; as palavras-chave do servidor aparecem aqui como etiquetas. O servidor precisa aceitar palavras-chave personalizadas.",
   "settings_account_make_default": "Conta de envio padrão",
   "settings_account_make_default_help": "Usada ao escrever a partir de Todas as caixas",
   "settings_account_name": "Nome do remetente",
