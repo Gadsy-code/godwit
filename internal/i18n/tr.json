@@ -560,6 +560,8 @@
   "settings_account_mailbox_help": "Sunucular genellikle hangi klasörün Taslaklar, Gönderilenler ve İstenmeyen olduğunu işaretler ve Godwit bunları otomatik algılar; yanlış algılanan bir klasör varsa buradan değiştirebilirsiniz. Kalıcı silme işlemi e-postaları sunucudan tamamen kaldırır, dolayısıyla diğer cihazlarınızdan da silinir.",
   "settings_account_mailbox_none": "Kullanma",
   "settings_account_mailbox_trash_help": "Silinen e-postalar önce buraya taşınır",
+  "settings_account_label_keywords": "Etiketleri IMAP anahtar sözcükleri olarak eşitle",
+  "settings_account_label_keywords_help": "Koyduğunuz etiketler sunucuya yazılır ve diğer posta uygulamalarında ve araçlarda görünür; sunucudaki anahtar sözcükler de burada etiket olarak görünür. Sunucunun özel anahtar sözcükleri desteklemesi gerekir.",
   "settings_account_make_default": "Varsayılan gönderen hesap",
   "settings_account_make_default_help": "Tüm Gelen Kutuları’ndan ileti yazarken kullanılır",
   "settings_account_name": "Gönderen adı",

@@ -560,6 +560,8 @@
   "settings_account_mailbox_help": "Los servidores suelen indicar qué carpeta corresponde a Borradores, Enviados y Correo no deseado, y Godwit las detecta automáticamente; si alguna no coincide, cámbiala aquí. Purgar elimina los correos del servidor de forma permanente, por lo que también desaparecerán de tus otros dispositivos.",
   "settings_account_mailbox_none": "No usar",
   "settings_account_mailbox_trash_help": "Los correos eliminados se mueven primero aquí",
+  "settings_account_label_keywords": "Sincronizar etiquetas como palabras clave IMAP",
+  "settings_account_label_keywords_help": "Tus etiquetas se guardan en el servidor y se ven en otras apps y herramientas de correo; las palabras clave del servidor aparecen aquí como etiquetas. El servidor debe admitir palabras clave personalizadas.",
   "settings_account_make_default": "Cuenta de envío predeterminada",
   "settings_account_make_default_help": "Se usa al redactar desde Todas las bandejas",
   "settings_account_name": "Nombre del remitente",

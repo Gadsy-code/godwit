@@ -560,6 +560,8 @@
   "settings_account_mailbox_help": "通常はサーバー側で下書き、送信済み、迷惑メールのフォルダが指定されており、Godwit が自動的に認識します。異なる場合はここで変更してください。完全削除を行うとサーバーから永久に削除され、他のデバイスからも見られなくなります。",
   "settings_account_mailbox_none": "使用しない",
   "settings_account_mailbox_trash_help": "削除したメールはまずここへ移動します",
+  "settings_account_label_keywords": "ラベルを IMAP キーワードとして同期",
+  "settings_account_label_keywords_help": "付けたラベルがサーバーに書き込まれ、ほかのメールアプリやツールからも見えます。サーバー上のキーワードもラベルとして表示されます。サーバーがカスタムキーワードに対応している必要があります。",
   "settings_account_make_default": "デフォルトの送信アカウントに設定",
   "settings_account_make_default_help": "「すべての受信トレイ」からメールを作成するときに使用されます",
   "settings_account_name": "差出人名",

@@ -560,6 +560,8 @@
   "settings_account_mailbox_help": "Servers geven meestal zelf aan welke map Concepten, Verzonden en Ongewenst is, en Godwit neemt dat automatisch over; als er een niet klopt, kun je dat hier aanpassen. Definitief verwijderen wist e-mail voorgoed van de server, zodat deze ook op je andere apparaten verdwijnt.",
   "settings_account_mailbox_none": "Niet gebruiken",
   "settings_account_mailbox_trash_help": "Verwijderde e-mail wordt eerst hierheen verplaatst",
+  "settings_account_label_keywords": "Labels synchroniseren als IMAP-trefwoorden",
+  "settings_account_label_keywords_help": "Je labels worden op de server opgeslagen en zijn zichtbaar in andere mail-apps en tools; trefwoorden van de server verschijnen hier als labels. De server moet eigen trefwoorden toestaan.",
   "settings_account_make_default": "Standaard verzendaccount",
   "settings_account_make_default_help": "Wordt gebruikt bij het opstellen vanuit Alle postvakken",
   "settings_account_name": "Naam afzender",

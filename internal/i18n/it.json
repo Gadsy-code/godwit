@@ -560,6 +560,8 @@
   "settings_account_mailbox_help": "Di solito i server indicano quali sono le cartelle Bozze, Inviati e Indesiderata e Godwit le rileva automaticamente; se una è sbagliata, modificala qui. L’eliminazione definitiva rimuove per sempre le email dal server, quindi spariranno anche dagli altri tuoi dispositivi.",
   "settings_account_mailbox_none": "Non usare",
   "settings_account_mailbox_trash_help": "Le email eliminate vengono prima spostate qui",
+  "settings_account_label_keywords": "Sincronizza le etichette come parole chiave IMAP",
+  "settings_account_label_keywords_help": "Le tue etichette vengono salvate sul server e sono visibili in altre app e strumenti di posta; le parole chiave del server appaiono qui come etichette. Il server deve consentire parole chiave personalizzate.",
   "settings_account_make_default": "Account di invio predefinito",
   "settings_account_make_default_help": "Usato quando scrivi da Tutte le caselle",
   "settings_account_name": "Nome mittente",

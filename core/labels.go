@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -468,6 +469,10 @@ func (s *Service) DeleteLabel(ctx context.Context, id int64) error {
 	defer end()
 	s.labelsMu.Lock()
 	defer s.labelsMu.Unlock()
+	// Its keyword leaves the server too, or the next sync would bring the label back.
+	if err := s.pushLabelKeyword(ctx, nil, id, false); err != nil {
+		return err
+	}
 	if _, err := s.db.Execute(ctx, "DELETE FROM labels WHERE id = ?", id); err != nil {
 		return err
 	}
@@ -577,7 +582,11 @@ func (s *Service) SetLabel(ctx context.Context, messageIDs []int64, labelID int6
 	}
 	s.notifyHooks()
 	s.bus.Publish(events.Event{Type: events.LabelsChanged})
-	return s.pushLabelKeyword(ctx, messageIDs, labelID, on) // the server learns of it as an IMAP keyword
+	// The server learns of it as an IMAP keyword; the label is set either way.
+	if err := s.pushLabelKeyword(ctx, messageIDs, labelID, on); err != nil {
+		slog.Warn("label keyword not queued", "label", labelID, "err", err)
+	}
+	return nil
 }
 
 // MessageLabels returns the labels on each of the messages, in the labels' order.

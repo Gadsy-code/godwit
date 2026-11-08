@@ -565,6 +565,8 @@
   "settings_account_mailbox_help": "Server kennzeichnen üblicherweise, welcher Ordner Entwürfe, Gesendet und Spam ist, und Godwit erkennt diese automatisch. Sollte ein Ordner falsch zugeordnet sein, passe ihn hier an. Endgültiges Löschen entfernt E-Mails unwiderruflich vom Server, sodass sie auch auf deinen anderen Geräten gelöscht werden.",
   "settings_account_mailbox_none": "Nicht verwenden",
   "settings_account_mailbox_trash_help": "Gelöschte E-Mails werden zuerst hierhin verschoben",
+  "settings_account_label_keywords": "Labels als IMAP-Schlüsselwörter synchronisieren",
+  "settings_account_label_keywords_help": "Deine Labels werden auf dem Server gespeichert und sind in anderen Mail-Apps und Tools sichtbar; Schlüsselwörter vom Server erscheinen hier als Labels. Der Server muss eigene Schlüsselwörter erlauben.",
   "settings_account_make_default": "Standard-Absenderkonto",
   "settings_account_make_default_help": "Wird beim Verfassen aus „Alle Posteingänge“ verwendet",
   "settings_account_name": "Absendername",

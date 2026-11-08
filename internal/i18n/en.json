@@ -1159,6 +1159,8 @@
   "settings_account_mailbox_help": "Servers usually mark which folder is Drafts, Sent and Junk, and Godwit picks them up; if it gets one wrong, change it here. Purging deletes mail from the server for good, so your other devices lose it too.",
   "settings_account_mailbox_none": "Don''t use",
   "settings_account_mailbox_trash_help": "Deleted mail moves here first",
+  "settings_account_label_keywords": "Sync labels as IMAP keywords",
+  "settings_account_label_keywords_help": "Labels you set show to other mail apps and tools on the server, and their keywords show here as labels. The server must allow custom keywords.",
   "settings_account_make_default": "Default sending account",
   "settings_account_make_default_help": "Used when writing from All Inboxes",
   "settings_account_name": "Sender name",
