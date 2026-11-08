@@ -577,7 +577,7 @@ func (s *Service) SetLabel(ctx context.Context, messageIDs []int64, labelID int6
 	}
 	s.notifyHooks()
 	s.bus.Publish(events.Event{Type: events.LabelsChanged})
-	return nil
+	return s.pushLabelKeyword(ctx, messageIDs, labelID, on) // the server learns of it as an IMAP keyword
 }
 
 // MessageLabels returns the labels on each of the messages, in the labels' order.
