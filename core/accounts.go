@@ -643,6 +643,9 @@ func (s *Service) UpdateAccount(ctx context.Context, id int64, p AccountPatch) (
 			return Account{}, err
 		}
 		in.Password = pw
+		if tok != "" {
+			in.graph = func(ctx context.Context) error { _, _, err := s.graphToken(ctx, acc); return err }
+		}
 		r, err := s.check(ctx, in, tok)
 		if tok != "" && errors.Is(err, conn.ErrAuthFailed) { // the cached token may be stale
 			if _, tok, _, err = s.credentials(ctx, acc, tok); err != nil {
@@ -661,6 +664,7 @@ func (s *Service) UpdateAccount(ctx context.Context, id int64, p AccountPatch) (
 		set("smtp_host", in.SMTPHost)
 		set("smtp_port", in.SMTPPort)
 		set("smtp_security", string(in.SMTPSecurity))
+		s.graphSend.Delete(id) // new servers: the next send tries SMTP before Graph again
 		// The checked settings work: the user just fixed the sign-in.
 		set("status", "ok")
 		set("status_detail", "")
