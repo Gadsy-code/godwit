@@ -141,6 +141,12 @@ func (s *Service) buildDraft(ctx context.Context, accountID int64, mode string, 
 			return Draft{}, ErrLocalArchive
 		}
 	}
+	self := acc.Email    // whose mail is answered: its own sent mail and address are the user's
+	if acc.ReceiveOnly { // so is a receive-only account's, and its new mail
+		if acc, err = s.draftAccount(ctx, 0); err != nil {
+			return Draft{}, ErrReceiveOnly
+		}
+	}
 	d := Draft{AccountID: acc.ID, Mode: mode}
 	st, err := s.loadSettings(ctx)
 	if err != nil {
@@ -155,7 +161,7 @@ func (s *Service) buildDraft(ctx context.Context, accountID int64, mode string, 
 		if mode == "forward" {
 			d.Subject = mail.ForwardSubject(orig.Subject)
 		} else {
-			d.To, d.Cc = mail.ReplyRecipients(orig, acc.Email, mode == "reply_all")
+			d.To, d.Cc = mail.ReplyRecipients(orig, self, mode == "reply_all")
 			d.Subject = mail.ReplySubject(orig.Subject)
 		}
 		d.Subject = defuseRefs(d.Subject) // a reference planted in the mail would block sending the reply
@@ -664,6 +670,9 @@ func (s *Service) enqueue(ctx context.Context, draftID, rev int64, checked []str
 	acc, err := s.account(ctx, d.AccountID)
 	if err != nil {
 		return err
+	}
+	if acc.ReceiveOnly {
+		return ErrReceiveOnly
 	}
 	o := mail.Outgoing{From: (&netmail.Address{Name: acc.Name, Address: acc.Email}).String(), ReplyTo: d.ReplyTo,
 		To: d.To, Cc: d.Cc, Bcc: d.Bcc, Subject: d.Subject, HTML: d.HTML, Related: related}

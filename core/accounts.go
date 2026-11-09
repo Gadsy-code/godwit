@@ -16,12 +16,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/plugins/sqlite"
 	"github.com/godwit-email/godwit/core/auth"
-	"github.com/godwit-email/godwit/core/conn"
 	"github.com/godwit-email/godwit/core/events"
 	"github.com/godwit-email/godwit/core/store"
 	"github.com/zalando/go-keyring"
@@ -162,7 +162,8 @@ func (s *Service) AddAccount(ctx context.Context, in AccountInput) (Account, err
 		}
 	}
 	checked, checkErr := s.check(ctx, in, "")
-	if checkErr != nil {
+	receiveOnly := in.ReceiveOnly && checked.OnlySMTPFailed()
+	if checkErr != nil && !receiveOnly {
 		return Account{}, &CheckError{Report: checked, err: checkErr}
 	}
 	if in.OAuthFlowID != "" {
@@ -207,10 +208,10 @@ func (s *Service) AddAccount(ctx context.Context, in AccountInput) (Account, err
 	}
 	stmts = append(stmts, sqlite.Statement{
 		SQL: `INSERT INTO accounts(email, name, alias, is_default, sync_limit, sync_since_months, auth_type, status, username,
-			imap_host, imap_port, imap_security, smtp_host, smtp_port, smtp_security, created_at, provider, oauth_client_id, imap_gmail, position)
-			VALUES (?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM accounts))`,
+			imap_host, imap_port, imap_security, smtp_host, smtp_port, smtp_security, created_at, provider, oauth_client_id, imap_gmail, receive_only, position)
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM accounts))`,
 		Args: []any{in.Email, in.Name, in.Alias, b2i(isDefault), sync.Limit, sync.Months, authType, in.username(),
-			in.IMAPHost, in.IMAPPort, string(in.IMAPSecurity), in.SMTPHost, in.SMTPPort, string(in.SMTPSecurity), time.Now().Unix(), in.Provider, in.oauthClientID, b2i(checked.gmail)},
+			in.IMAPHost, in.IMAPPort, string(in.IMAPSecurity), in.SMTPHost, in.SMTPPort, string(in.SMTPSecurity), time.Now().Unix(), in.Provider, in.oauthClientID, b2i(checked.gmail), b2i(receiveOnly)},
 	})
 	res, err := s.db.Transaction(ctx, stmts)
 	if err != nil {
@@ -300,6 +301,10 @@ func (s *Service) AddLocalArchive(ctx context.Context, name string) (Account, er
 // account, which has none of these.
 var ErrLocalArchive = errors.New("a local archive has no mail server")
 
+// ErrReceiveOnly is a send, or a sender choice, from a receive-only account
+// (Account.ReceiveOnly), or a reply with no other account that sends.
+var ErrReceiveOnly = errors.New("the account only receives mail")
+
 // localArchive reports whether account id is a local archive.
 func (s *Service) localArchive(ctx context.Context, id int64) (bool, error) {
 	rows, err := s.db.Query(ctx, "SELECT kind FROM accounts WHERE id = ?", id)
@@ -329,7 +334,7 @@ func b2i(b bool) int {
 
 const accountCols = `id, email, name, alias, COALESCE((SELECT html FROM signatures WHERE id = signature_id), ''), username, is_default, sync_limit, auth_type, status,
 	imap_host, imap_port, imap_security, smtp_host, smtp_port, smtp_security, smtp_reauth, provider, status_detail,
-	sync_since_months, (SELECT count(*) FROM folders WHERE account_id = accounts.id), signature_id, icon, ai_instructions, oauth_client_id, label_keywords, kind`
+	sync_since_months, (SELECT count(*) FROM folders WHERE account_id = accounts.id), signature_id, icon, ai_instructions, oauth_client_id, label_keywords, kind, receive_only`
 
 // ErrAccountNotFound is returned for an account id that does not exist.
 var ErrAccountNotFound = errors.New("account not found")
@@ -354,6 +359,7 @@ func scanAccount(r []any) Account {
 		SMTPHost: store.Str(r[13]), SMTPPort: int(store.Int(r[14])), SMTPSecurity: Security(store.Str(r[15])),
 		Provider: store.Str(r[17]), StatusDetail: store.Str(r[18]), SignatureID: store.Int(r[21]), Icon: store.Str(r[22]),
 		AIInstructions: store.Str(r[23]), OAuthClientID: store.Str(r[24]), LabelKeywords: store.Int(r[25]) == 1, Kind: store.Str(r[26]),
+		ReceiveOnly: store.Int(r[27]) == 1,
 	}
 	// SMTP refuses the password: the user is asked for it the same way. status and
 	// status_detail are IMAP's and the keychain's, and they take precedence.
@@ -456,7 +462,8 @@ var errNotPassword = errors.New("the account does not sign in with a password")
 // UpdatePassword checks password against the account's servers and, if both
 // accept it, saves it and clears reauth_required and a paused outbox; the worker
 // resumes and the outbox sends in its next round. A failed check is a
-// *CheckError and leaves the keychain unchanged.
+// *CheckError and leaves the keychain unchanged; for a receive-only account
+// only IMAP must pass, and a passing SMTP step makes it send again.
 func (s *Service) UpdatePassword(ctx context.Context, id int64, password string) error {
 	ctx, end, err := s.begin(ctx, id)
 	if err != nil {
@@ -472,12 +479,18 @@ func (s *Service) UpdatePassword(ctx context.Context, id int64, password string)
 	}
 	in := serverInput(acc.Email, acc.servers())
 	in.Password = password
-	if r, err := s.check(ctx, in, ""); err != nil {
+	r, err := s.check(ctx, in, "")
+	if err != nil && !(acc.ReceiveOnly && r.OnlySMTPFailed()) { // a receive-only account needs IMAP only
 		return &CheckError{Report: r, err: err}
 	}
 	// A refusal of the old password still in flight is stale after credentialsUpdated.
 	if err := keychainSet(s.keyringUser(id), password); err != nil {
 		return fmt.Errorf("save credentials to keychain: %w", err)
+	}
+	if acc.ReceiveOnly && err == nil { // SMTP takes the new password: it sends again
+		if _, err := s.db.Execute(ctx, "UPDATE accounts SET receive_only = 0 WHERE id = ?", id); err != nil {
+			return err
+		}
 	}
 	return s.credentialsUpdated(ctx, id, nil)
 }
@@ -486,7 +499,8 @@ func (s *Service) UpdatePassword(ctx context.Context, id int64, password string)
 // have signed in to the account's address with its provider (ErrWrongAccount,
 // ErrProviderMismatch; the old tokens stay), and the flow's OAuth client, which
 // may be another one than before (a rotated secret). It clears reauth_required
-// and a paused outbox; the worker resumes.
+// and a paused outbox; the worker resumes. A receive-only account sends again
+// if the check passes with the new sign-in (RecheckSending).
 func (s *Service) Reauthorize(ctx context.Context, id int64, flowID string) error {
 	ctx, end, err := s.begin(ctx, id)
 	if err != nil {
@@ -511,10 +525,11 @@ func (s *Service) Reauthorize(ctx context.Context, id int64, flowID string) erro
 	sem := s.refreshLock(id)
 	select {
 	case sem <- struct{}{}:
-		defer func() { <-sem }()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+	release := sync.OnceFunc(func() { <-sem })
+	defer release()
 	if _, ok := s.takeGrant(flowID); !ok {
 		return ErrUnknownFlow
 	}
@@ -534,7 +549,20 @@ func (s *Service) Reauthorize(ctx context.Context, id int64, flowID string) erro
 		err = fmt.Errorf("save credentials to keychain: %w", err)
 		return errors.Join(err, s.saveClient(context.WithoutCancel(ctx), id, old))
 	}
-	return s.credentialsUpdated(ctx, id, &g.Grant)
+	if err := s.credentialsUpdated(ctx, id, &g.Grant); err != nil {
+		return err
+	}
+	if acc.ReceiveOnly { // the new sign-in may send: a failing check keeps it receive-only
+		release() // the check may refresh the token
+		// Reread: the check refreshes with the OAuth client just saved.
+		if acc, err = s.account(ctx, id); err == nil {
+			_, err = s.recheckSending(ctx, acc)
+		}
+		if err != nil {
+			slog.Warn("could not recheck sending", "account", id, "err", err)
+		}
+	}
+	return nil
 }
 
 // saveClient makes c the account's OAuth client: its ID on the account and its
@@ -566,7 +594,8 @@ func serverInput(email string, ss ServerSettings) AccountInput {
 
 // UpdateAccount writes p's fields in one transaction. New Servers are first
 // checked with the stored credentials (a failure is a *CheckError and nothing is
-// saved). IsDefault true makes the account the only default; false fails on the
+// saved; a receive-only account's failing SMTP step alone still saves them and
+// keeps it receive-only, a passing one makes it send again). IsDefault true makes the account the only default; false fails on the
 // default account, as one account is always the default. Sync is a Limit of
 // 1–100000, Months of 1–120, or neither (all).
 func (s *Service) UpdateAccount(ctx context.Context, id int64, p AccountPatch) (Account, error) {
@@ -638,24 +667,17 @@ func (s *Service) UpdateAccount(ctx context.Context, id int64, p AccountPatch) (
 	}
 	if p.Servers != nil {
 		in := serverInput(acc.Email, *p.Servers)
-		pw, tok, _, err := s.credentials(ctx, acc, "")
-		if err != nil {
+		r, err := s.checkStored(ctx, acc, &in)
+		var ce *CheckError
+		if err != nil && !errors.As(err, &ce) {
 			return Account{}, err
 		}
-		in.Password = pw
-		if tok != "" {
-			in.graph = func(ctx context.Context) error { _, _, err := s.graphToken(ctx, acc); return err }
+		// A receive-only account may change servers while SMTP still fails; a
+		// passing SMTP check makes it send again.
+		if err != nil && !(acc.ReceiveOnly && r.OnlySMTPFailed()) {
+			return Account{}, err
 		}
-		r, err := s.check(ctx, in, tok)
-		if tok != "" && errors.Is(err, conn.ErrAuthFailed) { // the cached token may be stale
-			if _, tok, _, err = s.credentials(ctx, acc, tok); err != nil {
-				return Account{}, err
-			}
-			r, err = s.check(ctx, in, tok)
-		}
-		if err != nil {
-			return Account{}, &CheckError{Report: r, err: err}
-		}
+		set("receive_only", b2i(err != nil))
 		set("username", in.username())
 		set("imap_host", in.IMAPHost)
 		set("imap_gmail", b2i(r.gmail))

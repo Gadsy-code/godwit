@@ -1048,7 +1048,8 @@ func (s *Service) runForward(ctx context.Context, r Rule, runID int64, i int, ms
 		_, err := s.db.Transaction(ctx, failedResults(runID, acts, i, failure))
 		return true, err
 	}
-	rows, err := s.db.Query(ctx, "SELECT account_id, rule_sent FROM messages WHERE id = ?", msgID)
+	rows, err := s.db.Query(ctx, `SELECT account_id, rule_sent, (SELECT receive_only FROM accounts WHERE id = account_id)
+		FROM messages WHERE id = ?`, msgID)
 	if err != nil {
 		return false, err
 	}
@@ -1057,6 +1058,8 @@ func (s *Service) runForward(ctx context.Context, r Rule, runID int64, i int, ms
 		return fail(RuleFailGone)
 	case !slices.Contains(newMailTriggers, trigger) || store.Int(rows.Values[0][1]) != 0:
 		return false, s.exec(ctx, ruleResult(runID, acts, i, RuleActionSkipped, nil, nil))
+	case store.Int(rows.Values[0][2]) != 0: // NewDraft would send it unattended from another account
+		return fail(RuleFailSend)
 	case !slices.Contains(r.Confirmed, rcptKey(to)):
 		return fail(RuleFailUnconfirmed)
 	}
