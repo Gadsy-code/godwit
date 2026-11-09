@@ -87,7 +87,18 @@ func maskReport(text string) string {
 	if home, _ := os.UserHomeDir(); home != "" {
 		text = strings.ReplaceAll(text, home, "~")
 	}
-	return hostRE.ReplaceAllString(emailRE.ReplaceAllString(text, "<email>"), "<host>")
+	return hostRE.ReplaceAllStringFunc(emailRE.ReplaceAllString(text, "<email>"), maskHost)
+}
+
+// maskHost masks a host found in a report, but not what only looks like one
+// in the log's masked IMAP trace (see core.TraceWord): an IMAP word like RFC822.SIZE,
+// or a word the trace already masked, like xxxx.xxxx. Masking those would
+// change the trace's lengths, which are checked against its literal sizes.
+func maskHost(h string) string {
+	if core.TraceWord(h) || strings.Trim(h, "x0.-") == "" {
+		return h
+	}
+	return "<host>"
 }
 
 // issueURL is a GitHub new-issue link reporting an error with the log's

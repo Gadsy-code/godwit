@@ -772,3 +772,17 @@ func TestDialogCoversMaterial(t *testing.T) {
 		t.Errorf("material still covered after closing: alpha %d", a)
 	}
 }
+
+// A masked IMAP trace in a report keeps its IMAP words and masked words: host
+// masking turned RFC822.SIZE and xxxx.xxxx into <host>, changing the lengths
+// a trace is read for (#611). Real hosts are still masked.
+func TestReportKeepsAMaskedTrace(t *testing.T) {
+	trace := `* 14762 FETCH (UID 14773 RFC822.SIZE 25345 BODY[HEADER.FIELDS (MESSAGE-ID LIST-UNSUBSCRIBE)] {1161}
+xxxxxxxx. xxxx xxxx.xxxxxxx.xxx () xx imap.acme.io`
+	got := maskReport(trace)
+	want := `* 14762 FETCH (UID 14773 RFC822.SIZE 25345 BODY[HEADER.FIELDS (MESSAGE-ID LIST-UNSUBSCRIBE)] {1161}
+xxxxxxxx. xxxx xxxx.xxxxxxx.xxx () xx <host>`
+	if got != want {
+		t.Fatalf("masked\n%s\nwant\n%s", got, want)
+	}
+}
