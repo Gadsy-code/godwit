@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -486,11 +487,17 @@ func (s *Service) InlineImages(ctx context.Context, id int64, each func(cid stri
 	if err != nil {
 		return err
 	}
+	ids := map[string]bool{}
+	for _, a := range ar.Values {
+		ids[store.Str(a[2])] = true
+	}
+	refs := sync.OnceValue(func() []string { return gomail.CIDs(raw) })
 	fetcher := s.newAttachmentFetcher(ctx)
 	defer fetcher.close()
 	for _, a := range ar.Values {
-		contentType, cid := store.Str(a[1]), store.Str(a[2])
-		if !showsInlineImage(raw, cid, contentType) {
+		contentType := store.Str(a[1])
+		cid := inlineCID(raw, store.Str(a[2]), contentType, refs, ids)
+		if cid == "" {
 			continue
 		}
 		path, _, err := fetcher.get(store.Int(a[0]))
@@ -507,9 +514,25 @@ func (s *Service) InlineImages(ctx context.Context, id int64, each func(cid stri
 	return ctx.Err()
 }
 
-// showsInlineImage says whether the body raw shows an attachment as an inline image.
-func showsInlineImage(raw, cid, contentType string) bool {
-	return raw != "" && cid != "" && strings.HasPrefix(contentType, "image/") && strings.Contains(raw, cid)
+// inlineCID returns cid as the body raw spells it when raw shows that attachment
+// as an inline image, else "". Case is ignored: DavMail upper-cases the
+// Content-ID in BODYSTRUCTURE, so only the body keeps its real spelling. The
+// case-blind match looks only at refs, the body's cid: image references
+// (gomail.CIDs). ids holds every Content-ID of the message: a spelling one of
+// them matches exactly is that attachment's, never another's by case.
+func inlineCID(raw, cid, contentType string, refs func() []string, ids map[string]bool) string {
+	if raw == "" || cid == "" || !strings.HasPrefix(contentType, "image/") {
+		return ""
+	}
+	if strings.Contains(raw, cid) {
+		return cid
+	}
+	for _, r := range refs() {
+		if strings.EqualFold(r, cid) && !ids[r] {
+			return r
+		}
+	}
+	return ""
 }
 
 func (s *Service) readMessage(ctx context.Context, id int64, loadRemoteImages, lazy bool) (Message, error) {
@@ -533,11 +556,13 @@ func (s *Service) readMessage(ctx context.Context, id int64, loadRemoteImages, l
 		return Message{}, err
 	}
 	inline := map[string]gomail.Attachment{}
+	refs := sync.OnceValue(func() []string { return gomail.CIDs(raw) })
 	for _, a := range ar.Values {
 		info := AttachmentInfo{ID: store.Int(a[0]), Filename: store.Str(a[1]), ContentType: store.Str(a[2]),
 			Size: int(store.Int(a[3])), Inline: store.Int(a[4]) != 0}
 		msg.Attachments = append(msg.Attachments, info)
-		if cid := store.Str(a[5]); lazy && showsInlineImage(raw, cid, info.ContentType) {
+		// nil ids: this only notes which cids show, so a case match landing on another's is harmless
+		if cid := inlineCID(raw, store.Str(a[5]), info.ContentType, refs, nil); lazy && cid != "" {
 			inline[cid] = gomail.Attachment{}
 		}
 	}
