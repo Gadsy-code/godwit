@@ -227,7 +227,15 @@ func (v *labelsView) dialog(c *ui.Context) {
 		kit.Field(c, i18n.T("settings.labels.icon"), "", "", func() {
 			const perRow = 8
 			ui.Column(c).Gap(th.Space(1)).Children(func() {
-				settingButton(c, i18n.T("settings.account.icon.upload"), kit.Outline, false).OnClick(v.pickLabelImage)
+				ui.Row(c).Gap(th.Space(2)).AlignItems(ui.Center).Children(func() {
+					on := v.icon == core.LabelIconMonogram && v.imagePreview == nil
+					kit.Pressable(c.Key("monogram"), kit.PressableOpts{Bare: true, Selected: on, OnClick: func() { v.icon, v.image, v.imagePreview = core.LabelIconMonogram, nil, nil }}).
+						Label(core.LabelIconMonogram).Checked(on).Height(theme.LabelIconCell).Width(theme.LabelIconCell).Radius(t.Radius.Lg).Justify(ui.Center).AlignItems(ui.Center).
+						Children(func() {
+							kit.LabelBadge(c, kit.LabelBadgeOpts{Name: cmpName(v.name), Size: theme.IconLg, Color: t.Label(v.color)})
+						})
+					settingButton(c, i18n.T("settings.account.icon.upload"), kit.Outline, false).OnClick(v.pickLabelImage)
+				})
 				for start := 0; start < len(core.LabelIcons); start += perRow {
 					ui.Row(c.Key(start)).Gap(th.Space(1)).Children(func() {
 						for _, name := range core.LabelIcons[start:min(start+perRow, len(core.LabelIcons))] {

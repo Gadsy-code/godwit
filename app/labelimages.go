@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/godwit-email/godwit/core"
 	"github.com/godwit-email/godwit/internal/icons"
+	"github.com/godwit-email/godwit/internal/kit"
 	"github.com/godwit-email/godwit/internal/theme"
 )
 
@@ -44,9 +45,9 @@ func (a *App) labelImage(l core.Label) ui.ImageSource {
 
 // labelGlyph draws a label's image, or its glyph in its color.
 func (a *App) labelGlyph(c *ui.Context, l core.Label, size float32) {
-	if strings.HasPrefix(l.Icon, "image:") {
-		if img := a.labelImage(l); img != nil {
-			ui.Image(c, img).Size(size, size).Fit(ui.Contain).Shrink(0)
+	if l.Icon == core.LabelIconMonogram || strings.HasPrefix(l.Icon, "image:") {
+		if img := a.labelImage(l); img != nil || l.Icon == core.LabelIconMonogram {
+			kit.LabelBadge(c, kit.LabelBadgeOpts{Name: l.Name, Size: size, Color: theme.Of(c).Label(l.Color), Image: img})
 		} else {
 			ui.Row(c).Size(size, size) // keeps its place while it loads
 		}

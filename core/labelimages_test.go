@@ -42,3 +42,20 @@ func TestLabelImageIcon(t *testing.T) {
 	_, err = s.UpdateLabel(ctx, l.ID, LabelInput{Name: "Acme srl", Color: "blue", Icon: "home-4", IconImage: []byte("hello")})
 	require.ErrorIs(t, err, ErrAccountIcon)
 }
+
+// A label can also show its initial in its color, with nothing stored.
+func TestLabelMonogramIcon(t *testing.T) {
+	s := newLabelService(t, "", "en")
+	ctx := t.Context()
+
+	l, err := s.CreateLabel(ctx, LabelInput{Name: "Acme", Color: "blue", Icon: LabelIconMonogram})
+	require.NoError(t, err)
+	require.Equal(t, LabelIconMonogram, l.Icon)
+
+	l, err = s.UpdateLabel(ctx, l.ID, LabelInput{Name: "Acme", Color: "blue", Icon: "home-4"})
+	require.NoError(t, err)
+	require.Equal(t, "home-4", l.Icon)
+
+	_, err = s.CreateLabel(ctx, LabelInput{Name: "Other", Color: "blue", Icon: "not-an-icon"})
+	require.Error(t, err)
+}

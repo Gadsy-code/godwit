@@ -48,6 +48,10 @@ type Label struct {
 	Count, Unread                        int
 }
 
+// LabelIconMonogram is the Icon of a label that shows its initial in its color
+// instead of a glyph or an image; nothing is stored for it.
+const LabelIconMonogram = "monogram"
+
 // LabelInput is what the user sets on a label.
 type LabelInput struct {
 	Name, Description, Color, Icon string
@@ -389,7 +393,7 @@ func (s *Service) cleanLabel(ctx context.Context, in LabelInput, self int64) (La
 		return in, fmt.Errorf("a label description has at most %d characters", MaxLabelDescription)
 	case !slices.Contains(LabelColors, in.Color):
 		return in, fmt.Errorf("invalid label color %q", in.Color)
-	case in.IconImage == nil && !strings.HasPrefix(in.Icon, "image:") && !slices.Contains(LabelIcons, in.Icon):
+	case in.IconImage == nil && in.Icon != LabelIconMonogram && !strings.HasPrefix(in.Icon, "image:") && !slices.Contains(LabelIcons, in.Icon):
 		return in, fmt.Errorf("invalid label icon %q", in.Icon)
 	}
 	// In Go, not SQL: SQLite's lower() leaves non-ASCII letters alone.

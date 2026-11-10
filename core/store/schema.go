@@ -781,7 +781,7 @@ var Migrations = [][]string{{
 }, {
 	// A label's uploaded image: its icon is 'image:<n>' (n bumped per upload) and the
 	// bytes sit here, as an account's do in account_icons.
-	`CREATE TABLE label_icons (label_id INTEGER PRIMARY KEY REFERENCES labels(id) ON DELETE CASCADE,
+	`CREATE TABLE IF NOT EXISTS label_icons (label_id INTEGER PRIMARY KEY REFERENCES labels(id) ON DELETE CASCADE,
 		content_type TEXT NOT NULL, data BLOB NOT NULL)`,
 }}
 

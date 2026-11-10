@@ -54,10 +54,10 @@ func LabelChip(c *ui.Context, o LabelChipOpts) ui.Element {
 	chip.Children(func() {
 		if showIcon {
 			switch {
-			case o.Image != nil:
-				ui.Image(c, o.Image).Size(theme.IconXs, theme.IconXs).Fit(ui.Contain).Shrink(0)
+			case o.Image != nil || o.Icon == "monogram":
+				LabelBadge(c, LabelBadgeOpts{Name: o.Text, Size: theme.IconSm, Color: o.Color, Image: o.Image})
 			case strings.HasPrefix(o.Icon, "image:"):
-				ui.Row(c).Size(theme.IconXs, theme.IconXs) // its image is still loading
+				ui.Row(c).Size(theme.IconSm, theme.IconSm) // its image is still loading
 			default:
 				ui.Icon(c, icons.Get("label-"+o.Icon)).Size(theme.IconXs, theme.IconXs)
 			}
