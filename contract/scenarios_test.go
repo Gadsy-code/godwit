@@ -61,11 +61,11 @@ func TestAccounts(t *testing.T) {
 		ctx := t.Context()
 		ih, ip, sh, sp, user, pass := env.StartServers(t)
 		in := core.AccountInput{Email: "new@example.com", Name: "New", Username: user, Password: "wrong",
-			IMAPHost: ih, IMAPPort: ip, IMAPSecurity: core.SecurityNone, SMTPHost: sh, SMTPPort: sp, SMTPSecurity: core.SecurityNone}
+			Receiving: core.Server{Host: ih, Port: ip, Security: core.SecurityNone}, Sending: core.Server{Host: sh, Port: sp, Security: core.SecurityNone}}
 		// The fake servers' ports differ per Env: compare whether they came back.
 		ports := func(a core.Account) core.Account {
-			if a.IMAPPort == ip && a.SMTPPort == sp {
-				a.IMAPPort, a.SMTPPort = -1, -1
+			if a.Receiving.Port == ip && a.Sending.Port == sp {
+				a.Receiving.Port, a.Sending.Port = -1, -1
 			}
 			return a
 		}
@@ -224,7 +224,7 @@ func TestSettings(t *testing.T) {
 			LaunchAtLogin: true, KeepInBackground: false, ShowTrayIcon: false, UnreadInMenuBar: true,
 			NotifyNewMail: false, NotifyPreview: false,
 			QuickReplies: true, Summary: true, ThreadView: false,
-			DefaultModel: "svc/big", SmallModel: "svc/small", JudgeService: "judge", JudgeThreshold: 0.85, Translator: "plugin/dlx", LocalAPI: true, SidebarWidth: 320, ListWidth: 400, SignatureDelimiter: true,
+			DefaultModel: "svc/big", SmallModel: "svc/small", JudgeService: "judge", JudgeThreshold: 0.85, Translator: "plugin/dlx", LocalAPI: true, ExperimentalJMAP: true, SidebarWidth: 320, ListWidth: 400, SignatureDelimiter: true,
 			MaskCategories: core.MaskCategories{Names: core.MaskCategory{On: true, Action: core.MaskWarn}},
 			MaskWords:      []string{"Falcon"}, MaskWordsCase: true, MaskWordsWhole: true,
 			MaskRules: []mask.Rule{{Kind: "EMPLOYEE_ID", Regex: `E\d{6}`}}, MaskAllow: []string{"GitHub"}, RecognitionModel: true,

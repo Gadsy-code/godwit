@@ -110,7 +110,7 @@ func TestPurgeSkipsPendingMoves(t *testing.T) {
 	require.NoError(t, e.s.SetPurge(bg, e.acc.ID, "trash", 1))
 	// Shown in Trash but on the server in INBOX, with no move queued.
 	// Its UIDVALIDITY is set to Trash's, so only the server-folder guard holds it.
-	_, err := e.s.db.Execute(bg, "UPDATE message_locations SET shown = 0, uidvalidity = (SELECT uidvalidity FROM folders WHERE id = ?) WHERE message_id = ?",
+	_, err := e.s.db.Execute(bg, "UPDATE message_locations SET shown = 0, server_ref = (SELECT substr(cursor, 1, 11) FROM folders WHERE id = ?) || substr(server_ref, 12) WHERE message_id = ?",
 		e.folderID(t, "Trash"), e.idOf(t, "stray@x"))
 	require.NoError(t, err)
 	showIn(t, e.s, e.idOf(t, "stray@x"), e.folderID(t, "Trash"))
@@ -135,7 +135,7 @@ func TestPurgeRescueCancelsQueuedPurge(t *testing.T) {
 	e.sync(t)
 	require.NoError(t, e.s.SetPurge(bg, e.acc.ID, "trash", 1))
 	e.age(t, 2)
-	require.NoError(t, mailsync.QueuePurge(bg, e.s.db, e.dial(t), e.acc.ID))
+	require.NoError(t, mailsync.QueuePurge(bg, e.s.db, e.receiver(t), e.acc.ID))
 	require.Equal(t, 2, e.count(t, "SELECT count(*) FROM ops WHERE kind = 'purge' AND state = 'pending'"))
 
 	require.NoError(t, e.s.Move(bg, []int64{e.idOf(t, "m@x")}, e.folderID(t, "INBOX")))
@@ -363,7 +363,7 @@ func TestPurgeTurnedOffBeforePush(t *testing.T) {
 	e.sync(t)
 	require.NoError(t, e.s.SetPurge(bg, e.acc.ID, "trash", 1))
 	e.age(t, 2)
-	require.NoError(t, mailsync.QueuePurge(bg, e.s.db, e.dial(t), e.acc.ID))
+	require.NoError(t, mailsync.QueuePurge(bg, e.s.db, e.receiver(t), e.acc.ID))
 	require.NoError(t, e.s.SetPurge(bg, e.acc.ID, "trash", 0))
 	e.sync(t)
 	assert.Equal(t, []string{"m@x"}, e.onServer(t, "Trash"))

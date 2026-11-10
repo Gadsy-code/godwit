@@ -175,8 +175,8 @@ func (e *syncEnv) storedCopy(t *testing.T, id, folder int64) int64 {
 	r, err := e.s.db.Execute(bg, `INSERT INTO messages(account_id, message_id, subject, size, flags, date)
 		SELECT account_id, message_id, subject, size, flags, date FROM messages WHERE id = ?`, id)
 	require.NoError(t, err)
-	_, err = e.s.db.Execute(bg, `INSERT INTO message_locations(message_id, folder_id, shown, uidvalidity, uid, entered_at, date)
-		SELECT m.id, f.id, 1, f.uidvalidity, 1, unixepoch(), m.date FROM messages m, folders f WHERE m.id = ? AND f.id = ?`, r.LastInsertID, folder)
+	_, err = e.s.db.Execute(bg, `INSERT INTO message_locations(message_id, folder_id, shown, server_ref, entered_at, date)
+		SELECT m.id, f.id, 1, coalesce(substr(f.cursor, 1, 11), '0000000000:') || '0000000001', unixepoch(), m.date FROM messages m, folders f WHERE m.id = ? AND f.id = ?`, r.LastInsertID, folder)
 	require.NoError(t, err)
 	return r.LastInsertID
 }
@@ -351,7 +351,7 @@ func TestMoveNotReimportedBeforePush(t *testing.T) {
 	require.NoError(t, e.s.Move(bg, []int64{id}, archive))
 	e.im.Restart()
 
-	_, ferr := mailsync.Fetch(bg, e.s.db, e.dial(t), e.acc.ID, e.s.bus)
+	_, ferr := mailsync.Fetch(bg, e.s.db, e.receiver(t), e.acc.ID, e.s.bus, nil)
 	require.NoError(t, ferr) // pull before push
 	assert.Equal(t, [][]any{{id, archive}}, e.rows(t, "SELECT id, "+shownCol+" FROM messages"))
 
@@ -492,7 +492,7 @@ func TestRemoteFlagsDoNotOverwritePending(t *testing.T) {
 	require.NoError(t, c.Store(imap.UIDSetNum(1), &imap.StoreFlags{Op: imap.StoreFlagsDel, Silent: true, Flags: []imap.Flag{imap.FlagSeen}}, nil).Close())
 	require.NoError(t, c.Store(imap.UIDSetNum(1), &imap.StoreFlags{Op: imap.StoreFlagsAdd, Silent: true, Flags: []imap.Flag{imap.FlagFlagged}}, nil).Close())
 
-	_, ferr := mailsync.Fetch(bg, e.s.db, e.dial(t), e.acc.ID, e.s.bus)
+	_, ferr := mailsync.Fetch(bg, e.s.db, e.receiver(t), e.acc.ID, e.s.bus, nil)
 	require.NoError(t, ferr) // pull before push
 	assert.Equal(t, `\Seen`, store.Str(e.rows(t, "SELECT flags FROM messages")[0][0]), "local change wins until pushed")
 
@@ -653,7 +653,7 @@ func TestFetchKeepsConcurrentLocalFlags(t *testing.T) {
 		require.NoError(t, e.s.SetFlags(bg, []int64{id}, []string{`\Seen`}, nil))
 	}
 	t.Cleanup(func() { mailsync.BeforeFlagsWrite = nil })
-	_, ferr := mailsync.Fetch(bg, e.s.db, e.dial(t), e.acc.ID, e.s.bus)
+	_, ferr := mailsync.Fetch(bg, e.s.db, e.receiver(t), e.acc.ID, e.s.bus, nil)
 	require.NoError(t, ferr)
 	assert.Equal(t, `\Seen`, store.Str(e.rows(t, "SELECT flags FROM messages")[0][0]))
 	e.sync(t)

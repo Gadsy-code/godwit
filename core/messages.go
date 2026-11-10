@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/plugins/sqlite"
+	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/core/events"
 	gomail "github.com/godwit-email/godwit/core/mail"
 	"github.com/godwit-email/godwit/core/mailsync"
@@ -157,7 +158,7 @@ const shownFolders = `(SELECT group_concat(sl.folder_id) FROM message_locations 
 
 // serverLocation joins, as l and its folder as f, where the server has message
 // alias m (ADR 0034): one row per folder on Gmail, any of which serves a read.
-const serverLocation = "(message_locations l JOIN folders f ON f.id = l.folder_id) ON l.message_id = m.id AND l.uid IS NOT NULL"
+const serverLocation = "(message_locations l JOIN folders f ON f.id = l.folder_id) ON l.message_id = m.id AND l.server_ref IS NOT NULL"
 
 // shownIn is the condition that message alias m shows in one of folders, a
 // parenthesized SQL list or subquery of folder IDs.
@@ -1110,19 +1111,19 @@ func (s *Service) gmailAccount(ctx context.Context, acc int64) (bool, error) {
 	if acc == 0 {
 		return false, nil
 	}
-	r, err := s.db.Query(ctx, `SELECT imap_gmail, provider = 'gmail' AND lower(imap_host) IN ('imap.gmail.com', 'imap.googlemail.com')
-		AND imap_port = 993 AND imap_security = 'tls' FROM accounts WHERE id = ?`, acc)
+	r, err := s.db.Query(ctx, `SELECT features, provider = 'gmail' AND lower(recv_host) IN ('imap.gmail.com', 'imap.googlemail.com')
+		AND recv_port = 993 AND recv_security = 'tls' FROM accounts WHERE id = ?`, acc)
 	if err != nil {
 		return false, err
 	}
 	if len(r.Values) == 0 {
 		return false, ErrAccountNotFound
 	}
-	if r.Values[0][0] != nil {
-		return store.Int(r.Values[0][0]) != 0, nil
+	if d, ok := decodeFeatures(r.Values[0][0]); ok {
+		return allMail(d), nil
 	}
-	if store.Int(r.Values[0][1]) != 0 {
-		_, err := s.db.Execute(ctx, "UPDATE accounts SET imap_gmail = 1 WHERE id = ?", acc)
+	if store.Int(r.Values[0][1]) != 0 { // the next sign-in records the rest
+		_, err := s.db.Execute(ctx, "UPDATE accounts SET features = ? WHERE id = ?", encodeFeatures(backend.Description{Identity: backend.IdentityStable}), acc)
 		return true, err
 	}
 	// Gmail always lists its [Gmail] or [Google Mail] system folders; a synced
@@ -1136,12 +1137,23 @@ func (s *Service) gmailAccount(ctx context.Context, acc int64) (bool, error) {
 		return false, nil
 	}
 	// An unknown legacy server must be identified before choosing archive semantics.
-	c, release, _, err := s.dialAccount(ctx, acc, nil)
+	recv, release, err := s.dialAccount(ctx, acc)
 	if err != nil {
 		return false, err
 	}
 	defer release()
-	return c.Caps().Has("X-GM-EXT-1"), nil
+	d, err := recv.Describe(ctx)
+	return allMail(d), err
+}
+
+// allMail reports that archiving takes a message out of the inbox only
+// (backend.FeatureAllMail). An account migrated from Gmail IMAP kept only
+// its identity until its next sign-in.
+func allMail(d backend.Description) bool {
+	if d.Features == nil {
+		return d.Identity == backend.IdentityStable
+	}
+	return d.Features[backend.FeatureAllMail].Level == backend.LevelSupported
 }
 
 // archiveUndoWrites restores Gmail's INBOX label without removing a user label.

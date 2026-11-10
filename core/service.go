@@ -20,15 +20,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/godwit-email/godwit/backend"
+	"github.com/godwit-email/godwit/backend/conn"
 	"github.com/godwit-email/godwit/core/ai"
 	"github.com/godwit-email/godwit/core/ai/mask"
 	"github.com/godwit-email/godwit/core/ai/mask/guard"
-	"github.com/godwit-email/godwit/core/conn"
+	"github.com/godwit-email/godwit/core/auth"
 	"github.com/godwit-email/godwit/core/events"
 	"github.com/godwit-email/godwit/core/mailsync"
 	"github.com/godwit-email/godwit/core/plugins"
-	"github.com/godwit-email/godwit/core/send"
 	"github.com/godwit-email/godwit/core/store"
 	"github.com/godwit-email/godwit/internal/avatar"
 	"github.com/godwit-email/godwit/internal/imagecache"
@@ -157,10 +157,6 @@ type Service struct {
 	tokMu      sync.Mutex
 	tokens     map[int64]oauthToken    // OAuth accounts' access tokens; never stored
 	refreshing map[int64]chan struct{} // per-account 1-slot semaphore around a token refresh
-	// graphSend: accounts whose SMTP AUTH is disabled, sending through Graph.
-	// shortcut: memory only, so after a restart the first send tries SMTP once
-	// more; store it on the account if that one refused login ever matters.
-	graphSend sync.Map // int64 → bool
 
 	modelTokMu      sync.Mutex
 	modelTokens     map[int64]modelToken    // OAuth model services' access tokens; never stored
@@ -627,12 +623,12 @@ func (s *Service) SyncNow(ctx context.Context, accountID int64) error {
 	if local, err := s.localArchive(ctx, accountID); local || err != nil {
 		return err
 	}
-	return s.syncNow(ctx, accountID, true)
+	return s.syncNow(ctx, accountID, true, nil)
 }
 
-// syncNow is SyncNow for the worker (explicit false). A cancelled sync is a
-// shutdown, not a failure.
-func (s *Service) syncNow(ctx context.Context, accountID int64, explicit bool) error {
+// syncNow is SyncNow for the worker (explicit false), fetching only the
+// folders in only (nil: all). A cancelled sync is a shutdown, not a failure.
+func (s *Service) syncNow(ctx context.Context, accountID int64, explicit bool, only []backend.FolderRef) error {
 	unlock, err := s.lockAccount(ctx, accountID)
 	if err != nil {
 		return err
@@ -643,7 +639,7 @@ func (s *Service) syncNow(ctx context.Context, accountID int64, explicit bool) e
 	s.securityMu.Unlock()
 	defer func() { s.securityMu.Lock(); s.securitySyncs--; s.securityMu.Unlock() }()
 	s.bus.Publish(events.Event{Type: events.SyncStarted, AccountID: accountID})
-	if err := s.syncAccount(ctx, accountID, explicit); err != nil {
+	if err := s.syncAccount(ctx, accountID, explicit, only); err != nil {
 		if ctx.Err() == nil {
 			// Safe to show: conn never includes server text or the password in login errors.
 			s.bus.Publish(events.Event{Type: events.SyncFailed, AccountID: accountID, Error: err.Error(), Kind: string(conn.Classify(err))})
@@ -661,92 +657,98 @@ var (
 	beforeLockWait   func(id int64)
 )
 
-// dialAccount connects and logs in to the account's IMAP server. An auth failure
-// also marks the account reauth_required. release closes the connection and must
-// be called; cancelling ctx aborts blocked reads. h, if not nil, receives IDLE updates.
-func (s *Service) dialAccount(ctx context.Context, accountID int64, h *imapclient.UnilateralDataHandler) (c *imapclient.Client, release, abort func(), err error) {
+// dialAccount signs in to the account's receiving server and returns the
+// session. A refused access token is refreshed and tried once more; a refused
+// login also marks the account reauth_required. release closes the session
+// and must be called; cancelling ctx aborts blocked reads.
+func (s *Service) dialAccount(ctx context.Context, accountID int64) (recv backend.Receiver, release func(), err error) {
 	acc, err := s.account(ctx, accountID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if acc.Kind == KindLocalArchive {
-		return nil, nil, nil, ErrLocalArchive
+		return nil, nil, ErrLocalArchive
 	}
 	if afterAccountRead != nil {
 		afterAccountRead(accountID)
 	}
 	var ver uint64
-	for rejected := ""; ; {
-		var pw, tok string
-		if pw, tok, ver, err = s.credentials(ctx, acc, rejected); err != nil {
-			return nil, nil, nil, err
-		}
-		c, abort, err = conn.DialIMAPAbortable(ctx, conn.Endpoint{Host: acc.IMAPHost, Port: acc.IMAPPort, Security: acc.IMAPSecurity,
-			Username: acc.Username, Password: pw, AccessToken: tok}, h)
-		// A refused access token may just be stale: refresh it and try once more.
-		if rejected != "" || tok == "" || !errors.Is(err, conn.ErrAuthFailed) {
-			break
-		}
+	var rejected, tok string
+	recv = newReceiver(acc.Receiving, func(ctx context.Context) (backend.Credentials, error) {
+		cr, v, err := s.slotCredentials(ctx, acc, false, rejected)
+		tok, ver = cr.Token, v
+		return cr, err
+	})
+	d, err := recv.Describe(ctx) // signs in
+	// A refused access token may just be stale: refresh it and try once more.
+	if errors.Is(err, backend.ErrAuthFailed) && tok != "" && acc.AuthType == AuthOAuth {
 		rejected = tok
+		d, err = recv.Describe(ctx)
 	}
 	if err != nil {
-		if errors.Is(err, conn.ErrAuthFailed) {
+		if errors.Is(err, backend.ErrAuthFailed) {
 			err = errors.Join(err, s.ifCurrent(accountID, ver, func() error {
 				return s.setStatus(ctx, accountID, "reauth_required", "auth_rejected")
 			}))
 		}
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if err := s.ifCurrent(accountID, ver, func() error {
-		_, err := s.db.Execute(ctx, "UPDATE accounts SET imap_gmail = ? WHERE id = ?", b2i(c.Caps().Has("X-GM-EXT-1")), accountID)
+		_, err := s.db.Execute(ctx, "UPDATE accounts SET features = ? WHERE id = ?", encodeFeatures(d), accountID)
 		return err
 	}); err != nil {
-		c.Close()
-		return nil, nil, nil, err
+		recv.Close()
+		return nil, nil, err
 	}
 	// The credentials work: clear reauth_required as it is now, not as it was read
 	// above, since another login may have failed meanwhile. A parked worker resumes.
 	// SMTP's refusal (smtp_reauth) is separate and stays until checkSMTP clears it.
 	r, err := s.db.Execute(ctx, "UPDATE accounts SET status = 'ok', status_detail = '' WHERE id = ? AND status = 'reauth_required'", accountID)
 	if err != nil {
-		c.Close()
-		return nil, nil, nil, err
+		recv.Close()
+		return nil, nil, err
 	}
 	if r.Changes > 0 {
 		s.wakeWorker(accountID)
 	}
-	stop := context.AfterFunc(ctx, func() { c.Close() })
-	return c, func() { stop(); c.Close() }, abort, nil
+	stop := context.AfterFunc(ctx, func() { recv.Close() })
+	return recv, func() { stop(); recv.Close() }, nil
 }
 
-// syncAccount runs one sync. An SMTP login failure skips the outbox but not the
-// rest; it is returned at the end, so a worker round ends and parks.
-func (s *Service) syncAccount(ctx context.Context, accountID int64, explicit bool) (err error) {
-	c, release, _, err := s.dialAccount(ctx, accountID, nil)
+// syncAccount runs one sync, fetching only the folders in only (nil: all). An
+// SMTP login failure skips the outbox but not the rest; it is returned at the
+// end, so a worker round ends and parks.
+func (s *Service) syncAccount(ctx context.Context, accountID int64, explicit bool, only []backend.FolderRef) (err error) {
+	recv, release, err := s.dialAccount(ctx, accountID)
 	if err != nil {
 		return err
 	}
 	defer release()
-	defer func() { conn.LogTrace(c, err) }() // a response go-imap could not parse goes in the error report
 	// Purge and archive undo deadlines wake the worker again.
 	defer s.wakeForOps(ctx, accountID, s.clk().Now())
 	// Queued first, so this round's push expunges and its fetch drops the rows.
-	if err := mailsync.QueuePurge(ctx, s.db, c, accountID); err != nil {
+	if err := mailsync.QueuePurge(ctx, s.db, recv, accountID); err != nil {
 		return err
 	}
 	// The outbox before the push: a bulk change (thousands of ops) or a failing
 	// op must not hold mail the user sent.
 	useSMTP, smtpErr := s.checkSMTP(ctx, accountID, explicit)
+	// Before a sync stored the folders, where the Sent folder is is not known:
+	// the outbox runs once more after the fetch to file what it sent.
+	_, folders, err := mailsync.SentFolder(ctx, s.db, accountID)
+	if err != nil {
+		return err
+	}
 	if useSMTP {
-		smtpErr = s.processOutbox(ctx, c, accountID)
-		if smtpErr != nil && !errors.Is(smtpErr, conn.ErrAuthFailed) {
+		smtpErr = s.processOutbox(ctx, recv, accountID)
+		if smtpErr != nil && !errors.Is(smtpErr, backend.ErrAuthFailed) {
 			return smtpErr
 		}
 	}
-	if err := s.pushOps(ctx, c, accountID, mailsync.PushOps); err != nil {
+	if err := s.pushOps(ctx, recv, accountID, mailsync.PushOps); err != nil {
 		return err
 	}
-	more, err := mailsync.Fetch(ctx, s.db, c, accountID, s.bus)
+	more, err := mailsync.Fetch(ctx, s.db, recv, accountID, s.bus, only)
 	if err == nil {
 		err = s.logDaily(ctx) // daily rules run after the day's first complete sync
 	}
@@ -766,8 +768,11 @@ func (s *Service) syncAccount(ctx context.Context, accountID int64, explicit boo
 		return err
 	}
 	// Ops that waited for a move's claim can go now; ones already tried are not retried.
-	if err := s.pushOps(ctx, c, accountID, mailsync.PushNewOps); err != nil {
+	if err := s.pushOps(ctx, recv, accountID, mailsync.PushNewOps); err != nil {
 		return err
+	}
+	if useSMTP && smtpErr == nil && !folders {
+		smtpErr = s.processOutbox(ctx, recv, accountID)
 	}
 	return smtpErr
 }
@@ -790,25 +795,20 @@ func (s *Service) checkSMTP(ctx context.Context, accountID int64, explicit bool)
 	if !explicit {
 		return false, nil
 	}
-	ep, _, _, err := s.smtpEndpoint(ctx, accountID, "")
+	acc, err := s.account(ctx, accountID)
 	if err != nil {
 		return false, err
 	}
-	dial := func(ep conn.Endpoint) error {
-		if ep.Host == send.GraphHost {
-			return nil // a Graph token in hand is the check
+	sa := &sendAuth{s: s, acc: acc}
+	login := func() error {
+		if sa.acc.Sending.Protocol == auth.Graph {
+			_, err := sa.credentials(ctx) // a Graph token in hand is the check
+			return err
 		}
-		sc, err := conn.DialSMTP(ctx, ep)
-		if err == nil {
-			sc.Close()
-		}
-		return err
+		return sa.smtp().Check(ctx)
 	}
-	err = dial(ep)
-	if s.toGraph(ctx, accountID, err) || errors.Is(err, conn.ErrAuthFailed) && ep.AccessToken != "" {
-		if ep, _, _, err = s.smtpEndpoint(ctx, accountID, ep.AccessToken); err == nil {
-			err = dial(ep)
-		}
+	if err = login(); err != nil && sa.retry(ctx, err) {
+		err = login()
 	}
 	if err != nil {
 		return false, err
@@ -819,9 +819,9 @@ func (s *Service) checkSMTP(ctx context.Context, accountID int64, explicit bool)
 
 // pushOps pushes queued local changes. Ops that became conflict or failed are
 // announced with SyncFailed and the sync goes on.
-func (s *Service) pushOps(ctx context.Context, c *imapclient.Client, accountID int64,
-	push func(context.Context, *store.DB, *imapclient.Client, int64, time.Time) error) error {
-	err := push(ctx, s.db, c, accountID, s.clk().Now())
+func (s *Service) pushOps(ctx context.Context, recv backend.Receiver, accountID int64,
+	push func(context.Context, *store.DB, backend.Receiver, int64, time.Time) error) error {
+	err := push(ctx, s.db, recv, accountID, s.clk().Now())
 	var problems *mailsync.OpsError
 	if errors.As(err, &problems) {
 		if len(problems.Changed) > 0 {

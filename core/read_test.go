@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-imap/v2"
-	"github.com/godwit-email/godwit/core/conn"
+	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/core/events"
 	"github.com/godwit-email/godwit/core/internal/testmail"
 	gomail "github.com/godwit-email/godwit/core/mail"
@@ -499,7 +499,8 @@ func TestAttachmentFetcherConnectionClosedForNextLockHolder(t *testing.T) {
 	unlock, err := e.s.lockAccount(bg, e.acc.ID)
 	require.NoError(t, err)
 	assert.Nil(t, e.s.kept[e.acc.ID])
-	assert.Error(t, kept.c.Noop().Wait(), "closed once the lock was taken")
+	_, err = kept.recv.Find(bg, "INBOX", "a1@x", 0)
+	assert.Error(t, err, "closed once the lock was taken")
 	unlock()
 	_, _, err = f.get(ids[2][0].(int64))
 	require.NoError(t, err)
@@ -745,7 +746,7 @@ func TestGetAttachmentNotOnServerAndEvict(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, e.count(t, "SELECT count(*) FROM attachments WHERE cache_path IS NULL"))
 
-	_, err = e.s.db.Execute(bg, "UPDATE message_locations SET uidvalidity = NULL, uid = NULL")
+	_, err = e.s.db.Execute(bg, "UPDATE message_locations SET server_ref = NULL")
 	require.NoError(t, err)
 	_, _, err = e.s.GetAttachment(bg, ids[0][0].(int64))
 	assert.ErrorIs(t, err, ErrNotOnServerYet)
@@ -865,7 +866,7 @@ func TestAuthFailureDuringDownload(t *testing.T) {
 	ch, unsub := e.s.Subscribe()
 	defer unsub()
 	_, _, err := e.s.GetAttachment(bg, aid)
-	assert.ErrorIs(t, err, conn.ErrAuthFailed)
+	assert.ErrorIs(t, err, backend.ErrAuthFailed)
 	acc, _ := e.s.account(bg, e.acc.ID)
 	assert.Equal(t, "reauth_required", acc.Status)
 	assert.Len(t, ofType(collect(ch), events.SyncFailed), 1)

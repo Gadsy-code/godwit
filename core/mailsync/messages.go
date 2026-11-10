@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/plugins/sqlite"
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/core/mail"
 	"github.com/godwit-email/godwit/core/store"
 )
@@ -21,10 +20,10 @@ import (
 // of this fetch share its Message-ID and size. An inserted arrival logs its
 // pending receive event in that transaction; logArrivals publishes it after
 // a complete round knows its folders. A claim does not create an event.
-func importMessage(ctx context.Context, db *store.DB, a *account, f *folder, m *imapclient.FetchMessageBuffer, texts map[string][]byte, twins int, arrival bool, r *result) error {
-	p := toParsed(m, texts)
-	uid := uint32(m.UID)
-	if id, err := claim(ctx, db, a.id, f, uid, p.MessageID, m.RFC822Size, twins, r); err != nil || id != 0 {
+func importMessage(ctx context.Context, db *store.DB, a *account, f *folder, m backend.MessageAppeared, p *mail.Parsed, twins int, arrival bool, r *result) error {
+	size := m.Content.Size
+	ref := string(m.Ref)
+	if id, err := claim(ctx, db, a.id, f, ref, p.MessageID, size, twins, r); err != nil || id != 0 {
 		if id != 0 {
 			r.changed = append(r.changed, id)
 		}
@@ -55,37 +54,37 @@ func importMessage(ctx context.Context, db *store.DB, a *account, f *folder, m *
 
 	args := append([]any{a.id}, plan.args...)
 	args = append(args, nullable(p.MessageID), nullable(p.InReplyTo), nullable(strings.Join(p.References, " ")), p.Subject, p.From,
-		jsonList(p.To), jsonList(p.Cc), nullable(p.ReplyTo), p.Date.Unix(), flagString(m.Flags), m.RFC822Size,
-		mail.Snippet(p.Text), p.Text, nullable(p.HTML), p.Truncated, len(p.Attachments) > 0, nullable(labelFP(p, m.RFC822Size)),
-		p.ListUnsubscribe, p.ListUnsubscribePost, p.ListID, p.AutoSubmitted, p.Precedence, p.AuthenticationResults, secStatus, secReason, secScanned, verifyDKIM, p.RuleSent, gmailMsgID(m))
+		jsonList(p.To), jsonList(p.Cc), nullable(p.ReplyTo), p.Date.Unix(), flagString(m.Flags), size,
+		mail.Snippet(p.Text), p.Text, nullable(p.HTML), p.Truncated, len(p.Attachments) > 0, nullable(labelFP(p, size)),
+		p.ListUnsubscribe, p.ListUnsubscribePost, p.ListID, p.AutoSubmitted, p.Precedence, p.AuthenticationResults, secStatus, secReason, secScanned, verifyDKIM, p.RuleSent, nullable(m.ServerID))
 	stmts := append(plan.pre, sqlite.Statement{
 		SQL: `INSERT INTO messages(account_id, thread_id,
 			message_id, in_reply_to, refs, subject, from_addr, to_addrs, cc_addrs, reply_to, date, flags, size,
-			snippet, body_text, body_html, body_truncated, has_attachments, label_fp, list_unsubscribe, list_unsubscribe_post, list_id, auto_submitted, precedence, auth_results, security_status, security_reason, security_scanned_at, security_verify_dkim, rule_sent, gmail_msgid)
+			snippet, body_text, body_html, body_truncated, has_attachments, label_fp, list_unsubscribe, list_unsubscribe_post, list_id, auto_submitted, precedence, auth_results, security_status, security_reason, security_scanned_at, security_verify_dkim, rule_sent, server_id)
 			VALUES (?, ` + plan.expr + `, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		Args: args,
 	}, sqlite.Statement{
-		SQL: `INSERT INTO message_locations(message_id, folder_id, shown, uidvalidity, uid, entered_at, date)
-			VALUES (last_insert_rowid(), ?, 1, ?, ?, unixepoch(), ?)`,
-		Args: []any{f.id, f.uidValidity, uid, p.Date.Unix()},
+		SQL: `INSERT INTO message_locations(message_id, folder_id, shown, server_ref, entered_at, date)
+			VALUES (last_insert_rowid(), ?, 1, ?, unixepoch(), ?)`,
+		Args: []any{f.id, ref, p.Date.Unix()},
 	})
 	msgAt := len(stmts) - 2
 	for _, at := range p.Attachments {
 		stmts = append(stmts, sqlite.Statement{
 			SQL: `INSERT INTO attachments(message_id, part, encoding, charset, filename, content_type, size, content_id, inline)
-				VALUES ((SELECT message_id FROM message_locations WHERE folder_id = ? AND uid = ?), ?, ?, ?, ?, ?, ?, ?, ?)`,
-			Args: []any{f.id, uid, at.Part, at.Encoding, at.Charset, at.Filename, at.ContentType, at.Size, at.ContentID, at.Inline},
+				VALUES ((SELECT message_id FROM message_locations WHERE folder_id = ? AND server_ref = ?), ?, ?, ?, ?, ?, ?, ?, ?)`,
+			Args: []any{f.id, ref, at.Part, at.Encoding, at.Charset, at.Filename, at.ContentType, at.Size, at.ContentID, at.Inline},
 		})
 	}
-	stmts = append(stmts, threadTail(a.id, f.id, uid, ids)...)
+	stmts = append(stmts, threadTail(a.id, f.id, ref, ids)...)
 	verdict := ""
 	if _, final := secScanned.(int64); final {
 		verdict = secStatus
 	}
 	stmts = append(stmts, sqlite.Statement{
 		SQL: `INSERT INTO message_imports(message_id, arrival, verdict)
-   VALUES ((SELECT message_id FROM message_locations WHERE folder_id = ? AND uid = ?), ?, ?)`,
-		Args: []any{f.id, uid, arrival, verdict},
+   VALUES ((SELECT message_id FROM message_locations WHERE folder_id = ? AND server_ref = ?), ?, ?)`,
+		Args: []any{f.id, ref, arrival, verdict},
 	})
 	res, err := db.Transaction(ctx, stmts)
 	if err != nil {
@@ -186,7 +185,7 @@ func (r *result) logArrivalBatch(ctx context.Context, db *store.DB, accountID in
 // waiting, another arrival, or a message already in f with the same Message-ID
 // and size), nothing is merged: the ops become conflicts, the local rows waiting
 // are deleted and every server copy is imported as a message of its own.
-func claim(ctx context.Context, db *store.DB, accountID int64, f *folder, uid uint32, messageID string, size int64, twins int, r *result) (int64, error) {
+func claim(ctx context.Context, db *store.DB, accountID int64, f *folder, ref string, messageID string, size int64, twins int, r *result) (int64, error) {
 	if messageID == "" {
 		return 0, nil
 	}
@@ -202,7 +201,7 @@ func claim(ctx context.Context, db *store.DB, accountID int64, f *folder, uid ui
 	}
 	if len(rows.Values) == 1 && twins <= 1 && store.Int(present.Values[0][0]) == 0 {
 		op, id := store.Int(rows.Values[0][0]), store.Int(rows.Values[0][1])
-		_, err = db.Transaction(ctx, append(locate(id, f.id, f.uidValidity, uid),
+		_, err = db.Transaction(ctx, append(locate(id, f.id, ref),
 			sqlite.Statement{SQL: "UPDATE ops SET state = 'done' WHERE id = ?", Args: []any{op}}))
 		if err != nil {
 			return 0, err
@@ -272,35 +271,41 @@ func unclaimable(ctx context.Context, db *store.DB, accountID int64, r *result) 
 // pendingFlags is true for a messages row with a flags op not yet pushed.
 const pendingFlags = "EXISTS (SELECT 1 FROM ops o WHERE o.message_id = messages.id AND o.kind = 'flags' AND o.state = 'pending')"
 
-// syncFlags refreshes flags of 1:last_uid (except where a flags op is pending)
-// and drops the folder's locations whose UID the server no longer returns,
-// and the messages then orphaned. It changes nothing unless the FETCH completed.
-// ponytail: refetches every FLAGS each round; switch to CONDSTORE/QRESYNC.
-func syncFlags(ctx context.Context, db *store.DB, c *imapclient.Client, accountID int64, f *folder, r *result) error {
-	if f.lastUID == 0 {
-		return nil
-	}
-	var set imap.UIDSet
-	set.AddRange(1, imap.UID(f.lastUID))
-	bufs, err := c.Fetch(set, &imap.FetchOptions{UID: true, Flags: true}).Collect()
-	if err != nil {
-		return err // incomplete: a missing UID might only mean a dropped connection
-	}
-	remote := map[uint32]string{}
-	for _, b := range bufs {
-		remote[uint32(b.UID)] = flagString(b.Flags)
-	}
+// applySnapshot refreshes the flags of f's locations from the folder's
+// snapshot (except where a flags op is pending) and drops the locations it no
+// longer has, and the messages then orphaned.
+func applySnapshot(ctx context.Context, db *store.DB, stable bool, accountID int64, f *folder, snap map[backend.MessageRef]backend.Flags, r *result) error {
+	return applyFlags(ctx, db, stable, accountID, f, snap, nil, r)
+}
+
+// applyFlags is applySnapshot for only the locations in refs, a change set's
+// increments (MessageGone, FlagsChanged): those of refs missing from flags
+// are gone. nil refs is the whole folder, as a snapshot.
+func applyFlags(ctx context.Context, db *store.DB, stable bool, accountID int64, f *folder, snap map[backend.MessageRef]backend.Flags, refs []backend.MessageRef, r *result) error {
 	// A flags change still queued wins over the server's flags until it is pushed.
-	rows, err := db.Query(ctx, "SELECT messages.id, l.uid, flags, thread_id, "+pendingFlags+
-		" FROM message_locations l JOIN messages ON messages.id = l.message_id WHERE l.folder_id = ? AND l.uid <= ?", f.id, f.lastUID)
-	if err != nil {
-		return err
+	q := "SELECT messages.id, l.server_ref, flags, thread_id, " + pendingFlags +
+		" FROM message_locations l JOIN messages ON messages.id = l.message_id WHERE l.folder_id = ? AND l.server_ref IS NOT NULL"
+	var values [][]any
+	if refs == nil {
+		rows, err := db.Query(ctx, q, f.id)
+		if err != nil {
+			return err
+		}
+		values = rows.Values
+	}
+	for page := range slices.Chunk(refs, 500) {
+		rows, err := db.Query(ctx, q+" AND l.server_ref IN ("+marks(len(page))+")", append([]any{f.id}, anys(page)...)...)
+		if err != nil {
+			return err
+		}
+		values = append(values, rows.Values...)
 	}
 	var stmts []sqlite.Statement
 	var changed, tids, vanished []int64
-	for _, v := range rows.Values {
-		id, uid, flags := store.Int(v[0]), uint32(store.Int(v[1])), store.Str(v[2])
-		fl, ok := remote[uid]
+	for _, v := range values {
+		id, flags := store.Int(v[0]), store.Str(v[2])
+		remote, ok := snap[backend.MessageRef(store.Str(v[1]))]
+		fl := flagString(remote)
 		switch {
 		case !ok:
 			stmts = append(stmts, sqlite.Statement{SQL: "DELETE FROM message_locations WHERE message_id = ? AND folder_id = ?", Args: []any{id, f.id}})
@@ -323,10 +328,10 @@ func syncFlags(ctx context.Context, db *store.DB, c *imapclient.Client, accountI
 	if f.role == "trash" || f.role == "junk" { // Gmail keeps no other label on binned mail
 		r.expunged = append(r.expunged, vanished...)
 	}
-	return r.orphan(ctx, db, c, accountID, vanished)
+	return r.orphan(ctx, db, stable, accountID, vanished)
 }
 
-// BeforeFlagsWrite, when set, runs between syncFlags reading the local flags and
+// BeforeFlagsWrite, when set, runs between applySnapshot reading the local flags and
 // writing the server's. Tests only.
 var BeforeFlagsWrite func()
 

@@ -1,8 +1,11 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/core"
 	"github.com/godwit-email/godwit/core/auth"
 	"github.com/godwit-email/godwit/internal/i18n"
@@ -74,6 +78,7 @@ func aiTooLong(s string) bool {
 
 type serverForm struct {
 	imapHost, imapPort, smtpHost, smtpPort, username string
+	jmapURL                                          string // a JMAP account's session URL, in place of the IMAP server
 	imapSec, smtpSec                                 core.Security
 }
 
@@ -416,7 +421,7 @@ func accountProvider(a *App, acc core.Account) auth.Provider {
 
 // secretName is what the account's password is called: 授权码, 密码…
 func secretName(pr auth.Provider) string {
-	if s := tr("onboarding.login." + pr.Login); s != "" && pr.Login != "oauth" {
+	if s := tr("onboarding.login." + loginOf(pr)); s != "" && loginOf(pr) != "oauth" {
 		return s
 	}
 	return i18n.T("onboarding.login.password")
@@ -591,10 +596,14 @@ func (p *settingsPage) accountView(c *ui.Context, acc core.Account) {
 			kit.Text(c, host+":"+strconv.Itoa(port)+" · "+cmpTr("onboarding.security."+string(sec), string(sec)), t.Text.Sm).Font(theme.Mono).TextColor(t.Muted)
 		})
 	}
+	recv := server("IMAP", acc.Receiving.Host, acc.Receiving.Port, acc.Receiving.Security, "")
+	if acc.Receiving.Protocol == auth.JMAP {
+		recv = row("JMAP", "", func() { kit.Text(c, sessionURL(acc.Receiving), t.Text.Sm).Font(theme.Mono).TextColor(t.Muted) })
+	}
 	login := []func(){
 		row(i18n.T("settings.account.login.method"), p.authText(acc, prov), func() { p.authButton(c, acc, prov, false) }),
-		server("IMAP", acc.IMAPHost, acc.IMAPPort, acc.IMAPSecurity, ""),
-		server("SMTP", acc.SMTPHost, acc.SMTPPort, acc.SMTPSecurity, receiveOnlyHelp(acc)),
+		recv,
+		server("SMTP", acc.Sending.Host, acc.Sending.Port, acc.Sending.Security, receiveOnlyHelp(acc)),
 	}
 	if acc.ReceiveOnly { // OAuth has no servers to change: it tries SMTP again as it is
 		login = append(login, row(i18n.T("settings.account.receive_only"), "", func() {
@@ -668,18 +677,30 @@ func (p *settingsPage) authText(acc core.Account, prov auth.Provider) string {
 	case acc.AuthType == "oauth":
 		return i18n.T("settings.account.login.oauth")
 	}
-	return i18n.Tf("settings.account.login.secret", secretName(prov))
+	return i18n.Tf("settings.account.login.secret", accountSecretName(acc, prov))
+}
+
+// accountSecretName is what the account's receiving secret is called: an
+// API token, else as secretName.
+func accountSecretName(acc core.Account, pr auth.Provider) string {
+	if acc.Receiving.Auth == core.AuthAPIToken {
+		return i18n.T("onboarding.login.api_token")
+	}
+	return secretName(pr)
 }
 
 // authButton signs in again (OAuth) or updates the password.
 func (p *settingsPage) authButton(c *ui.Context, acc core.Account, prov auth.Provider, banner bool) {
 	o := kit.ButtonOpts{Variant: kit.Outline, Size: kit.SizeSm}
 	if acc.AuthType != "oauth" {
-		text, open := i18n.Tf("settings.account.login.update", secretName(prov)), func() { p.openDialog("password", acc) }
+		text, open := i18n.Tf("settings.account.login.update", accountSecretName(acc, prov)), func() { p.openDialog("password", acc) }
 		if banner {
 			kit.AlertAction(c, kit.Warning, text, open)
 		} else {
 			kit.Button(c, text, o).OnClick(open)
+		}
+		if acc.Receiving.Auth == core.AuthAPIToken && !banner { // SMTP signs in with a password of its own
+			kit.Button(c, i18n.Tf("settings.account.login.update", i18n.T("onboarding.send_secret")), o).OnClick(func() { p.openDialog("send_password", acc) })
 		}
 		return
 	}
@@ -709,8 +730,20 @@ func (p *settingsPage) openDialog(kind string, acc core.Account) {
 	p.client = clientForm{id: saved, savedID: saved, manual: true, public: public}
 	p.showSecret = false
 	p.iconSelected, p.iconUpload, p.iconPreview = acc.Icon, nil, nil
-	p.servers = serverForm{imapHost: acc.IMAPHost, imapPort: strconv.Itoa(acc.IMAPPort), smtpHost: acc.SMTPHost,
-		smtpPort: strconv.Itoa(acc.SMTPPort), username: acc.Username, imapSec: acc.IMAPSecurity, smtpSec: acc.SMTPSecurity}
+	p.servers = serverForm{imapHost: acc.Receiving.Host, imapPort: strconv.Itoa(acc.Receiving.Port), smtpHost: acc.Sending.Host,
+		smtpPort: strconv.Itoa(acc.Sending.Port), username: acc.Username, imapSec: acc.Receiving.Security, smtpSec: acc.Sending.Security}
+	if acc.Receiving.Protocol == auth.JMAP {
+		p.servers.jmapURL = sessionURL(acc.Receiving)
+	}
+}
+
+// sessionURL is a JMAP slot's session URL, as the user types it.
+func sessionURL(s core.Server) string {
+	u := url.URL{Scheme: "https", Host: net.JoinHostPort(s.Host, strconv.Itoa(s.Port)), Path: cmp.Or(s.Path, "/.well-known/jmap")}
+	if s.Security == core.SecurityNone {
+		u.Scheme = "http"
+	}
+	return u.String()
 }
 
 func (p *settingsPage) closeDialog() {
@@ -765,19 +798,23 @@ func (p *settingsPage) dialogView(c *ui.Context) {
 	label, variant := i18n.T("common.save"), kit.Default
 	incomplete := false // the confirm button waits for the fields
 	switch p.dialog {
-	case "password":
+	case "password", "send_password":
 		incomplete = p.secret == ""
-		title = i18n.Tf("settings.account.login.update", secretName(prov))
+		name, update := accountSecretName(acc, prov), a.svc.UpdatePassword
+		if p.dialog == "send_password" {
+			name, update = i18n.T("onboarding.send_secret"), a.svc.UpdateSendPassword
+		}
+		title = i18n.Tf("settings.account.login.update", name)
 		body = func() {
-			ui.Field(c, secretName(prov), func() { secretInput(c, &p.secret, &p.showSecret) }).
+			ui.Field(c, name, func() { secretInput(c, &p.secret, &p.showSecret) }).
 				Description(i18n.T("onboarding.secret.help"))
 			secretWhitespaceHint(c, &p.secret)
 		}
 		secret := p.secret
 		confirm = func() {
-			p.act(id, func(ctx context.Context) error { return a.svc.UpdatePassword(ctx, id, secret) },
+			p.act(id, func(ctx context.Context) error { return update(ctx, id, secret) },
 				func(bool) {
-					a.toastAs(kit.ToastSuccess, i18n.Tf("settings.account.password.updated", secretName(prov)))
+					a.toastAs(kit.ToastSuccess, i18n.Tf("settings.account.password.updated", name))
 				})
 		}
 	case "client":
@@ -803,8 +840,12 @@ func (p *settingsPage) dialogView(c *ui.Context) {
 		confirm = func() {
 			ip, _ := strconv.Atoi(strings.TrimSpace(sf.imapPort))
 			sp, _ := strconv.Atoi(strings.TrimSpace(sf.smtpPort))
-			ss := core.ServerSettings{Username: strings.TrimSpace(sf.username), IMAPHost: strings.TrimSpace(sf.imapHost), IMAPPort: ip,
-				IMAPSecurity: sf.imapSec, SMTPHost: strings.TrimSpace(sf.smtpHost), SMTPPort: sp, SMTPSecurity: sf.smtpSec}
+			ss := core.ServerSettings{Username: strings.TrimSpace(sf.username), Receiving: core.Server{Host: strings.TrimSpace(sf.imapHost), Port: ip, Security: sf.imapSec},
+				Sending: core.Server{Host: strings.TrimSpace(sf.smtpHost), Port: sp, Security: sf.smtpSec}}
+			if sf.jmapURL != "" {
+				ss.Receiving, _ = jmapServer(sf.jmapURL) // invalid, its empty host fails the check
+				ss.Receiving.Protocol = auth.JMAP
+			}
 			var saved core.Account
 			p.act(id, func(ctx context.Context) (err error) {
 				saved, err = update(ctx, id, core.AccountPatch{Servers: &ss})
@@ -992,7 +1033,11 @@ func (p *settingsPage) serversForm(c *ui.Context) {
 		})
 	}
 	sf := &p.servers
-	server("imap", &sf.imapHost, &sf.imapPort, &sf.imapSec)
+	if sf.jmapURL != "" {
+		ui.Field(c, i18n.T("onboarding.jmap.url"), func() { kit.Input(c, &sf.jmapURL, kit.InputOpts{}) })
+	} else {
+		server("imap", &sf.imapHost, &sf.imapPort, &sf.imapSec)
+	}
 	server("smtp", &sf.smtpHost, &sf.smtpPort, &sf.smtpSec)
 	ui.Field(c, i18n.T("onboarding.username"), func() { kit.Input(c, &sf.username, kit.InputOpts{}) })
 }
@@ -1128,8 +1173,11 @@ func (p *settingsPage) mailboxSection(c *ui.Context, id int64) {
 			})
 		}
 	}
-	settingsSection(c, i18n.T("settings.account.mailbox"), i18n.T("settings.account.mailbox.help"),
-		role(0), role(1), role(2), purge(0), role(3), purge(1), role(4))
+	rows := []func(){role(0), role(1), role(2), purge(0), role(3), purge(1), role(4)}
+	if p.a.unsupported(id, backend.FeaturePurge) != "" { // the server cannot expunge: no purge at all
+		rows = []func(){role(0), role(1), role(2), role(3), role(4)}
+	}
+	settingsSection(c, i18n.T("settings.account.mailbox"), i18n.T("settings.account.mailbox.help"), rows...)
 }
 
 // moveAccount puts the account at i before the one at to (len for the end),

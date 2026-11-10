@@ -12,7 +12,8 @@ import (
 	"time"
 
 	"github.com/emersion/go-imap/v2"
-	"github.com/godwit-email/godwit/core/conn"
+	"github.com/godwit-email/godwit/backend"
+	"github.com/godwit-email/godwit/backend/imapbackend"
 	"github.com/godwit-email/godwit/core/events"
 	"github.com/godwit-email/godwit/core/internal/testmail"
 	"github.com/godwit-email/godwit/core/store"
@@ -404,11 +405,39 @@ func TestCancelledSyncIsNotAFailure(t *testing.T) {
 	assert.Empty(t, ofType(collect(ch), events.SyncFailed))
 }
 
+// The worker polls as often as the receiving backend declares.
 func TestWorkerPollsWithoutIdle(t *testing.T) {
-	setFor(t, &pollInterval, 200*time.Millisecond)
+	setFor(t, &imapbackend.PollInterval, 200*time.Millisecond)
 	e, ch := newWorkerEnv(t, testmail.WithoutIdle())
 	e.put(t, "INBOX", msg("p@x"))
 	waitEvent(t, ch, events.MessageReceived, 5*time.Second)
+}
+
+// A server change wakes a sync of only the folders Watch says changed: new
+// mail in INBOX does not pull the other folders, the next full round does.
+func TestWorkerWakeSyncsOnlyWhatChanged(t *testing.T) {
+	e, ch := newWorkerEnv(t)
+	e.put(t, "Archive", msg("arch@x"))
+	e.put(t, "INBOX", msg("new@x"))
+	ev := waitEvent(t, ch, events.MessageReceived, 5*time.Second)
+	assert.Equal(t, []int64{e.idOf(t, "new@x")}, ev.MessageIDs)
+	assert.Zero(t, e.count(t, "SELECT count(*) FROM messages WHERE message_id = 'arch@x'"), "Archive waits for a full round")
+}
+
+// INBOX mail arriving more often than idleMax does not put off the full
+// round: rounds of INBOX alone keep the deadline the last full round set.
+func TestWorkerInboxWakesKeepFullDeadline(t *testing.T) {
+	setFor(t, &idleMax, 500*time.Millisecond)
+	e, _ := newWorkerEnv(t)
+	e.put(t, "Archive", msg("arch@x"))
+	for i := 0; i < 40; i++ {
+		e.put(t, "INBOX", msg(fmt.Sprintf("in%d@x", i)))
+		if e.count(t, "SELECT count(*) FROM messages WHERE message_id = 'arch@x'") > 0 {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("Archive never synced while INBOX kept changing")
 }
 
 func TestWorkerFullRoundFindsOtherFolders(t *testing.T) {
@@ -503,7 +532,7 @@ func TestSMTPAuthFailurePausesOnlyOutbox(t *testing.T) {
 	default:
 	}
 
-	assert.ErrorIs(t, e.s.SyncNow(bg, e.acc.ID), conn.ErrAuthFailed)
+	assert.ErrorIs(t, e.s.SyncNow(bg, e.acc.ID), backend.ErrAuthFailed)
 	assert.Equal(t, 2, e.smtp.AuthAttempts()-base, "an explicit sync tries SMTP once")
 	assert.Empty(t, e.smtp.Messages())
 
