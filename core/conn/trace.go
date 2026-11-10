@@ -83,7 +83,8 @@ func LogTrace(c *imapclient.Client, err error) {
 		return
 	}
 	if b := v.(*trace).bytes(); len(b) > 0 {
-		log.Printf("imap: traffic before %q, masked:\n%s", firstLine(err.Error()), maskTrace(b))
+		masked := TracePrefix + strings.ReplaceAll(maskTrace(b), "\n", "\n"+TracePrefix)
+		log.Printf("imap: traffic before %q, masked:\n%s", firstLine(err.Error()), masked)
 	}
 }
 
@@ -103,9 +104,8 @@ func firstLine(s string) string {
 	return s
 }
 
-// TraceWord reports whether w is an IMAP word a masked trace keeps as it is,
-// such as HEADER.FIELDS, so a report's host masking can leave it alone.
-func TraceWord(w string) bool { return traceWords[w] }
+// TracePrefix 标记已脱敏的 trace 行，报告移除前缀后保留其原始字节。
+const TracePrefix = "imap> "
 
 // traceWords are the IMAP words a masked trace keeps as they are. Everything
 // else that is not syntax or a number is masked, since it may be mail.

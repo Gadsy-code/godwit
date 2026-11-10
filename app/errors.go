@@ -87,18 +87,20 @@ func maskReport(text string) string {
 	if home, _ := os.UserHomeDir(); home != "" {
 		text = strings.ReplaceAll(text, home, "~")
 	}
-	return hostRE.ReplaceAllStringFunc(emailRE.ReplaceAllString(text, "<email>"), maskHost)
+	return hostRE.ReplaceAllString(emailRE.ReplaceAllString(text, "<email>"), "<host>")
 }
 
-// maskHost masks a host found in a report, but not what only looks like one
-// in the log's masked IMAP trace (see core.TraceWord): an IMAP word like RFC822.SIZE,
-// or a word the trace already masked, like xxxx.xxxx. Masking those would
-// change the trace's lengths, which are checked against its literal sizes.
-func maskHost(h string) string {
-	if core.TraceWord(h) || strings.Trim(h, "x0.-") == "" {
-		return h
+// maskReportLog 只保留带来源标记的已脱敏 trace，避免改变其字节计数。
+func maskReportLog(text string) string {
+	var out strings.Builder
+	for line := range strings.Lines(text) {
+		if trace, ok := strings.CutPrefix(line, core.TracePrefix); ok {
+			out.WriteString(trace)
+		} else {
+			out.WriteString(maskReport(line))
+		}
 	}
-	return "<host>"
+	return out.String()
 }
 
 // issueURL is a GitHub new-issue link reporting an error with the log's
@@ -112,7 +114,7 @@ func issueURL(errText, logText string) string {
 	if r := []rune(title); len(r) > 80 {
 		title = string(r[:80]) + "…"
 	}
-	lines := strings.Split(maskReport(strings.TrimSpace(logText)), "\n")
+	lines := strings.Split(maskReportLog(strings.TrimSpace(logText)), "\n")
 	for {
 		// The keys are field ids in .github/ISSUE_TEMPLATE/bug_report.yml; logs renders as code there.
 		u := "https://github.com/godwit-email/godwit/issues/new?" + url.Values{

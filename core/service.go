@@ -719,9 +719,8 @@ func (s *Service) dialAccount(ctx context.Context, accountID int64, h *imapclien
 	return c, func() { stop(); c.Close() }, abort, nil
 }
 
-// TraceWord reports whether w is an IMAP word the masked IMAP trace in the log
-// keeps as it is (see conn.LogTrace), so an error report can leave it alone.
-func TraceWord(w string) bool { return conn.TraceWord(w) }
+// TracePrefix 标记日志中已脱敏的 IMAP trace 行，供错误报告识别。
+const TracePrefix = conn.TracePrefix
 
 // syncAccount runs one sync. An SMTP login failure skips the outbox but not the
 // rest; it is returned at the end, so a worker round ends and parks.
