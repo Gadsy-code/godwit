@@ -571,7 +571,7 @@ func (p *contactsPage) bigAvatar(c *ui.Context, ct core.Contact, name string) {
 	t, th := theme.Of(c), c.Theme()
 	size := th.Space(18)
 	if img := p.avatar(ct); img != nil {
-		ui.Box(c).Size(size, size).Shrink(0).Radius(t.Radius.X2l).Clip().Label(name).Children(func() {
+		ui.Box(c).Size(size, size).Shrink(0).Radius(t.Radius.X2l).Clip().Background(t.MarkTile).Label(name).Children(func() {
 			ui.Image(c, img).Size(size, size).Fit(ui.Cover)
 		})
 		return
