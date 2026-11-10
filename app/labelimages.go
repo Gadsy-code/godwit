@@ -47,7 +47,7 @@ func (a *App) labelImage(l core.Label) ui.ImageSource {
 func (a *App) labelGlyph(c *ui.Context, l core.Label, size float32) {
 	if l.Icon == core.LabelIconMonogram || strings.HasPrefix(l.Icon, "image:") {
 		if img := a.labelImage(l); img != nil || l.Icon == core.LabelIconMonogram {
-			kit.LabelBadge(c, kit.LabelBadgeOpts{Name: l.Name, Size: size, Color: theme.Of(c).Label(l.Color), Image: img})
+			kit.LabelBadge(c, kit.LabelBadgeOpts{Name: l.Name, Size: size, Color: theme.Of(c).Label(l.Color), Image: img}).Margin(0, c.Theme().Space(0.5), 0, 0)
 		} else {
 			ui.Row(c).Size(size, size) // keeps its place while it loads
 		}

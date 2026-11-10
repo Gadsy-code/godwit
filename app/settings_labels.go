@@ -234,6 +234,13 @@ func (v *labelsView) dialog(c *ui.Context) {
 						Children(func() {
 							kit.LabelBadge(c, kit.LabelBadgeOpts{Name: cmpName(v.name), Size: theme.IconXl, Color: t.Label(v.color)})
 						})
+					if img := v.dialogImage(); img != nil { // the image picked or kept: shown as the chosen mark
+						kit.Pressable(c.Key("image"), kit.PressableOpts{Bare: true, Selected: true}).
+							Label(cmpName(v.name)).Checked(true).Height(theme.LabelIconCell).Width(theme.LabelIconCell).Radius(t.Radius.Lg).Justify(ui.Center).AlignItems(ui.Center).
+							Children(func() {
+								kit.LabelBadge(c, kit.LabelBadgeOpts{Name: cmpName(v.name), Size: theme.IconXl, Color: t.Label(v.color), Image: img})
+							})
+					}
 					settingButton(c, i18n.T("settings.account.icon.upload"), kit.Outline, false).OnClick(v.pickLabelImage)
 				})
 				for start := 0; start < len(core.LabelIcons); start += perRow {
