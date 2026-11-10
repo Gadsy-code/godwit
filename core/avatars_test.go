@@ -540,3 +540,38 @@ func TestSenderAvatarDatabaseError(t *testing.T) {
 	require.ErrorContains(t, err, "no such table")
 	assert.Empty(t, f.hits())
 }
+
+// A logo the user keeps in <data dir>/logos/<domain>.<ext> stands for that domain's
+// mail: it comes before any BIMI or favicon, costs no request, and is shown only
+// where an avatar may show at all.
+func TestSenderAvatarOwnLogo(t *testing.T) {
+	own := avatarPNG(t)
+	var site bytes.Buffer // what the site would give: another, valid image
+	require.NoError(t, png.Encode(&site, image.NewRGBA(image.Rect(0, 0, 48, 48))))
+	other := site.Bytes()
+	f := newAvatarFixture(t, func(w http.ResponseWriter, r *http.Request) { w.Write(other) })
+	dir := filepath.Join(f.s.opts.DataDir, "logos")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "example.com.png"), own, 0o600))
+
+	id := addMessage(t, f.s, "s", "Bob <bob@mail.example.com>", "plain", "", 1)
+	got, err := f.s.SenderAvatar(t.Context(), id, false)
+	require.NoError(t, err)
+	assert.Equal(t, "own", got.Source, "a subdomain takes its organization's logo")
+	assert.Equal(t, own, got.Data)
+	assert.Empty(t, f.hits(), "no request for a logo the user keeps")
+
+	// Not an image: ignored, the usual sources run.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "other.org.png"), []byte("hello"), 0o600))
+	id = addMessage(t, f.s, "s", "Bob <bob@other.org>", "plain", "", 1)
+	got, err = f.s.SenderAvatar(t.Context(), id, false)
+	require.NoError(t, err)
+	assert.Equal(t, "favicon", got.Source)
+
+	// The image policy still decides whether an avatar shows.
+	f.policy(t, "ask", false, false)
+	id = addMessage(t, f.s, "s", "Bob <bob@example.com>", "plain", "", 1)
+	got, err = f.s.SenderAvatar(t.Context(), id, false)
+	require.NoError(t, err)
+	assert.Empty(t, got.Data)
+}

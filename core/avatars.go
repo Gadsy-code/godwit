@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"os"
+	"path/filepath"
 	"strings"
 
 	gomail "github.com/godwit-email/godwit/core/mail"
@@ -72,6 +74,9 @@ func (s *Service) SenderAvatar(ctx context.Context, messageID int64, allowRemote
 	if len(sites) == 0 {
 		return Avatar{}, nil
 	}
+	if img, ok := s.ownLogo(sites); ok {
+		return result(img, "own")
+	}
 	var providerDomains []string
 	for _, provider := range s.ListProviders() {
 		providerDomains = append(providerDomains, provider.Domains...)
@@ -130,4 +135,32 @@ func (s *Service) SenderAvatar(ctx context.Context, messageID int64, allowRemote
 		}
 	}
 	return Avatar{}, nil
+}
+
+// ownLogoExts are the files a logo the user keeps may be, tried in this order.
+var ownLogoExts = []string{".svg", ".png", ".webp", ".jpg", ".jpeg", ".gif", ".ico"}
+
+// ownLogo is the logo the user keeps for one of sites (a sender's host, then its
+// organization): <data dir>/logos/<site><ext>. It stands in place of any BIMI logo
+// or favicon, and costs no request. A file that is not a safe avatar image (the
+// same checks as a favicon's, at any size from 32 pixels) is left out.
+func (s *Service) ownLogo(sites []string) (imagecache.Image, bool) {
+	dir := filepath.Join(s.opts.DataDir, "logos")
+	for _, site := range sites {
+		if site == "" || filepath.Base(site) != site || strings.ContainsAny(site, `/\`) {
+			continue
+		}
+		for _, ext := range ownLogoExts {
+			data, err := os.ReadFile(filepath.Join(dir, site+ext))
+			if err != nil {
+				continue
+			}
+			out, format, w, h, err := imagefetch.CheckAvatarImage(data, "favicon")
+			if err != nil {
+				continue
+			}
+			return imagecache.Image{Data: out, Format: format, Width: w, Height: h}, true
+		}
+	}
+	return imagecache.Image{}, false
 }
