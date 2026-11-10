@@ -15,6 +15,7 @@ import (
 type LabelChipOpts struct {
 	Text, Icon, Tip string
 	Image           ui.ImageSource // shown instead of the glyph when Icon is image:<n>
+	ImageFill       bool           // Image brings its own background: drawn edge to edge
 	Display         string
 	Color           theme.LabelColor
 	Auto            bool
@@ -55,7 +56,7 @@ func LabelChip(c *ui.Context, o LabelChipOpts) ui.Element {
 		if showIcon {
 			switch {
 			case o.Image != nil || o.Icon == "monogram":
-				LabelBadge(c, LabelBadgeOpts{Name: o.Text, Size: theme.IconSm, Color: o.Color, Image: o.Image})
+				LabelBadge(c, LabelBadgeOpts{Name: o.Text, Size: theme.IconSm, Color: o.Color, Image: o.Image, Fill: o.ImageFill})
 			case strings.HasPrefix(o.Icon, "image:"):
 				ui.Row(c).Size(theme.IconSm, theme.IconSm) // its image is still loading
 			default:

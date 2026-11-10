@@ -32,6 +32,7 @@ type labelsView struct {
 	editLabel               core.Label     // the label being edited, for its current image
 	image                   []byte         // an image picked in the dialog, not saved yet
 	imagePreview            ui.ImageSource // and its decoded form
+	fill                    bool           // its image is drawn edge to edge, not on a margin
 
 	order ui.ListState // the labels' list, its rows dragged to reorder them
 
@@ -114,7 +115,7 @@ func (v *labelsView) row(c *ui.Context, l core.Label) {
 	row.Children(func() {
 		ui.Icon(c, icons.Get("grip")).Size(theme.Icon, theme.Icon).TextColor(t.Idle)
 		ui.Row(c).Width(th.Space(28)).Children(func() {
-			kit.LabelChip(c, kit.LabelChipOpts{Text: l.Name, Icon: l.Icon, Image: v.a.labelImage(l), Color: t.Label(l.Color)})
+			kit.LabelChip(c, kit.LabelChipOpts{Text: l.Name, Icon: l.Icon, Image: v.a.labelImage(l), ImageFill: v.a.labelImageFills(l), Color: t.Label(l.Color)})
 		})
 		desc, color := l.Description, t.Muted
 		if desc == "" {
@@ -157,6 +158,7 @@ func (v *labelsView) open(l core.Label) {
 	v.name, v.desc, v.color, v.icon = l.Name, l.Description, l.Color, l.Icon
 	v.image, v.imagePreview = nil, nil
 	v.editLabel = l
+	v.fill = core.LabelImageFills(l.Icon)
 }
 
 // taken reports whether another label has the name.
@@ -195,7 +197,7 @@ func (v *labelsView) dialog(c *ui.Context) {
 					caption = i18n.T("settings.labels.preview.auto")
 				}
 				ui.Row(c).Gap(th.Space(2)).AlignItems(ui.Center).Children(func() {
-					kit.LabelChip(c, kit.LabelChipOpts{Text: preview, Icon: v.icon, Image: v.dialogImage(), Color: t.Label(v.color), Auto: auto})
+					kit.LabelChip(c, kit.LabelChipOpts{Text: preview, Icon: v.icon, Image: v.dialogImage(), ImageFill: v.dialogFill(), Color: t.Label(v.color), Auto: auto})
 					kit.Text(c, caption, t.Text.Sm).TextColor(t.Muted)
 				})
 			}
@@ -235,11 +237,14 @@ func (v *labelsView) dialog(c *ui.Context) {
 							kit.LabelBadge(c, kit.LabelBadgeOpts{Name: cmpName(v.name), Size: theme.IconXl, Color: t.Label(v.color)})
 						})
 					if img := v.dialogImage(); img != nil { // the image picked or kept: shown as the chosen mark
-						kit.Pressable(c.Key("image"), kit.PressableOpts{Bare: true, Selected: true}).
-							Label(cmpName(v.name)).Checked(true).Height(theme.LabelIconCell).Width(theme.LabelIconCell).Radius(t.Radius.Lg).Justify(ui.Center).AlignItems(ui.Center).
-							Children(func() {
-								kit.LabelBadge(c, kit.LabelBadgeOpts{Name: cmpName(v.name), Size: theme.IconXl, Color: t.Label(v.color), Image: img})
-							})
+						for _, fill := range []bool{false, true} { // on a margin, or edge to edge
+							on := v.fill == fill
+							kit.Pressable(c.Key(fill), kit.PressableOpts{Bare: true, Selected: on, OnClick: func() { v.fill = fill }}).
+								Label(cmpName(v.name)).Checked(on).Height(theme.LabelIconCell).Width(theme.LabelIconCell).Radius(t.Radius.Lg).Justify(ui.Center).AlignItems(ui.Center).
+								Children(func() {
+									kit.LabelBadge(c, kit.LabelBadgeOpts{Name: cmpName(v.name), Size: theme.IconXl, Color: t.Label(v.color), Image: img, Fill: fill})
+								})
+						}
 					}
 					settingButton(c, i18n.T("settings.account.icon.upload"), kit.Outline, false).OnClick(v.pickLabelImage)
 				})
@@ -292,7 +297,7 @@ func cmpName(name string) string {
 
 func (v *labelsView) save() {
 	a := v.a
-	id, in := v.editID, core.LabelInput{Name: v.name, Description: v.desc, Color: v.color, Icon: v.icon, IconImage: v.image}
+	id, in := v.editID, core.LabelInput{Name: v.name, Description: v.desc, Color: v.color, Icon: v.dialogIcon(), IconImage: v.image, IconFill: v.fill}
 	v.dlg = false
 	a.writes.Chain("labels", func(ctx context.Context) (err error) {
 		if id == 0 {

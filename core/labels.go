@@ -58,6 +58,18 @@ type LabelInput struct {
 	// IconImage is an uploaded png, jpeg, gif, webp or svg shown instead of a
 	// glyph; Icon then becomes image:<n> (LabelIcon). Nil keeps the label's image.
 	IconImage []byte
+	// IconFill draws a new IconImage edge to edge, for a mark that brings its own
+	// background; false leaves it a margin on the tile. To change it for a kept
+	// image, set Icon to its image:<n> with LabelImageFillSuffix or without.
+	IconFill bool
+}
+
+// LabelImageFillSuffix ends the Icon of a label whose image is drawn edge to edge.
+const LabelImageFillSuffix = ":fill"
+
+// LabelImageFills is whether a label's Icon, image:<n>, draws its image edge to edge.
+func LabelImageFills(icon string) bool {
+	return strings.HasPrefix(icon, "image:") && strings.HasSuffix(icon, LabelImageFillSuffix)
 }
 
 // presetLabel is a label seeded once, in the first language Godwit ran in.
@@ -687,6 +699,9 @@ func (s *Service) labelImageStatements(ctx context.Context, in LabelInput, id in
 			return nil, in, err
 		}
 		in.Icon = "image:" + strconv.FormatInt(time.Now().UnixNano(), 36)
+		if in.IconFill {
+			in.Icon += LabelImageFillSuffix
+		}
 		return []sqlite.Statement{{
 			SQL:  "INSERT OR REPLACE INTO label_icons(label_id, content_type, data) VALUES (" + ref + ", ?, ?)",
 			Args: args(ct, in.IconImage)}}, in, nil
@@ -695,7 +710,7 @@ func (s *Service) labelImageStatements(ctx context.Context, in LabelInput, id in
 			return nil, in, fmt.Errorf("invalid label icon %q", in.Icon)
 		}
 		cur, err := s.label(ctx, id)
-		if err != nil || cur.Icon != in.Icon {
+		if err != nil || strings.TrimSuffix(cur.Icon, LabelImageFillSuffix) != strings.TrimSuffix(in.Icon, LabelImageFillSuffix) {
 			return nil, in, fmt.Errorf("invalid label icon %q", in.Icon)
 		}
 		return nil, in, nil

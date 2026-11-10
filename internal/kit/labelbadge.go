@@ -31,6 +31,8 @@ type LabelBadgeOpts struct {
 	Size  float32
 	Color theme.LabelColor
 	Image ui.ImageSource
+	// Fill draws Image edge to edge, for a mark that brings its own background.
+	Fill bool
 }
 
 // LabelBadge draws a label's image or its initial in a rounded square. An image
@@ -50,8 +52,12 @@ func LabelBadge(c *ui.Context, o LabelBadgeOpts) ui.Element {
 		// The image keeps a margin inside the tile, so a mark that fills its canvas
 		// does not touch the edge.
 		in := o.Size - o.Size/4
+		fit := ui.Contain
+		if o.Fill {
+			in, fit = o.Size, ui.Cover
+		}
 		return ui.Box(c).Size(o.Size, o.Size).Shrink(0).Radius(radius).Clip().Background(t.MarkTile).Center().Label(o.Name).Children(func() {
-			ui.Image(c, o.Image).Size(in, in).Fit(ui.Contain)
+			ui.Image(c, o.Image).Size(in, in).Fit(fit)
 			ui.Box(c).Absolute().Left(0).Top(0).Size(o.Size, o.Size).Radius(radius).Border(theme.Hairline, t.Outline)
 		})
 	}

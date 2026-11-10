@@ -39,7 +39,7 @@ func (a *App) labelChip(c *ui.Context, al core.AppliedLabel, menu func(*ui.Menu)
 	if al.Auto {
 		tip = i18n.T("label.tip.auto")
 	}
-	o := kit.LabelChipOpts{Text: l.Name, Icon: l.Icon, Display: a.settings.LabelDisplay, Tip: tip, Color: theme.Of(c).Label(l.Color), Auto: al.Auto, Menu: menu, Image: a.labelImage(l)}
+	o := kit.LabelChipOpts{Text: l.Name, Icon: l.Icon, Display: a.settings.LabelDisplay, Tip: tip, Color: theme.Of(c).Label(l.Color), Auto: al.Auto, Menu: menu, Image: a.labelImage(l), ImageFill: a.labelImageFills(l)}
 	if onRemove != nil {
 		o.OnRemove, o.RemoveLabel = onRemove, i18n.Tf("reader.labels.remove", l.Name)
 	}

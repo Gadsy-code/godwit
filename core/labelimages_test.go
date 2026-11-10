@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/base64"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -58,4 +59,34 @@ func TestLabelMonogramIcon(t *testing.T) {
 
 	_, err = s.CreateLabel(ctx, LabelInput{Name: "Other", Color: "blue", Icon: "not-an-icon"})
 	require.Error(t, err)
+}
+
+// Whether an image fills its badge edge to edge is the user's choice: it is the
+// ":fill" the icon ends with, and it changes without a new upload.
+func TestLabelImageFill(t *testing.T) {
+	s := newLabelService(t, "", "en")
+	ctx := t.Context()
+
+	l, err := s.CreateLabel(ctx, LabelInput{Name: "Acme", Color: "blue", Icon: "home-4", IconImage: tinyPNG, IconFill: true})
+	require.NoError(t, err)
+	require.True(t, LabelImageFills(l.Icon))
+	base := strings.TrimSuffix(l.Icon, LabelImageFillSuffix)
+
+	l, err = s.UpdateLabel(ctx, l.ID, LabelInput{Name: "Acme", Color: "blue", Icon: base})
+	require.NoError(t, err)
+	require.Equal(t, base, l.Icon, "the margin again, the same image")
+	img, err := s.LabelIcon(ctx, l.ID)
+	require.NoError(t, err)
+	require.Equal(t, tinyPNG, img.Data)
+
+	l, err = s.UpdateLabel(ctx, l.ID, LabelInput{Name: "Acme", Color: "blue", Icon: base + LabelImageFillSuffix})
+	require.NoError(t, err)
+	require.True(t, LabelImageFills(l.Icon))
+
+	_, err = s.UpdateLabel(ctx, l.ID, LabelInput{Name: "Acme", Color: "blue", Icon: "image:other" + LabelImageFillSuffix})
+	require.Error(t, err, "not this label's image")
+
+	l, err = s.CreateLabel(ctx, LabelInput{Name: "Other", Color: "blue", Icon: "home-4", IconImage: tinyPNG})
+	require.NoError(t, err)
+	require.False(t, LabelImageFills(l.Icon), "a margin unless asked")
 }

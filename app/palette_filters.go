@@ -32,7 +32,7 @@ func labelIcon(icon string) string {
 func (p *palette) renderAccountIcon(c *ui.Context, acc core.Account, selected bool) {
 	if strings.HasPrefix(acc.Icon, "image:") {
 		if img := p.a.accountImage(acc); img != nil {
-			kit.LabelBadge(c, kit.LabelBadgeOpts{Name: accountName(acc), Size: theme.IconSm, Image: img})
+			kit.LabelBadge(c, kit.LabelBadgeOpts{Name: accountName(acc), Size: theme.IconSm, Image: img, Fill: p.a.accountImageFills(acc)})
 			return
 		}
 	}
