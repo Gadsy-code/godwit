@@ -332,7 +332,7 @@ func decodeIcon(ct string, data []byte) ui.ImageSource {
 func (a *App) accountIcon(c *ui.Context, acc core.Account, size float32) {
 	if strings.HasPrefix(acc.Icon, "image:") {
 		if img := a.accountImage(acc); img != nil {
-			markTile(c, img, size)
+			kit.LabelBadge(c, kit.LabelBadgeOpts{Name: accountName(acc), Size: size, Image: img})
 			return
 		}
 	}

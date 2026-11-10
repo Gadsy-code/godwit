@@ -37,8 +37,8 @@ type LabelBadgeOpts struct {
 // sits on a white tile with a hairline edge, centred and uncut, the way an app icon does.
 func LabelBadge(c *ui.Context, o LabelBadgeOpts) ui.Element {
 	t := theme.Of(c)
-	radius := t.Radius.Md
-	font := t.Text.Xs // a letter in a small badge, a step up in a large one
+	radius := min(t.Radius.Lg, o.Size/3) // round, whatever the size
+	font := t.Text.Xs                    // a letter in a small badge, a step up in a large one
 	if o.Size >= theme.IconLg {
 		font = t.Text.Sm
 	}
@@ -47,8 +47,11 @@ func LabelBadge(c *ui.Context, o LabelBadgeOpts) ui.Element {
 		// is contained, so a logo that is not square is not cut, and centred. The
 		// outline is laid over the tile instead of being its border, because a
 		// border inside the box pushes the image off centre.
-		return ui.Box(c).Size(o.Size, o.Size).Shrink(0).Radius(radius).Clip().Background(t.MarkTile).Label(o.Name).Children(func() {
-			ui.Image(c, o.Image).Size(o.Size, o.Size).Fit(ui.Contain)
+		// The image keeps a margin inside the tile, so a mark that fills its canvas
+		// does not touch the edge.
+		in := o.Size - o.Size/4
+		return ui.Box(c).Size(o.Size, o.Size).Shrink(0).Radius(radius).Clip().Background(t.MarkTile).Center().Label(o.Name).Children(func() {
+			ui.Image(c, o.Image).Size(in, in).Fit(ui.Contain)
 			ui.Box(c).Absolute().Left(0).Top(0).Size(o.Size, o.Size).Radius(radius).Border(theme.Hairline, t.Outline)
 		})
 	}
