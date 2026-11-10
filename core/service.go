@@ -22,6 +22,7 @@ import (
 
 	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/backend/conn"
+	"github.com/godwit-email/godwit/backend/ews"
 	"github.com/godwit-email/godwit/core/ai"
 	"github.com/godwit-email/godwit/core/ai/mask"
 	"github.com/godwit-email/godwit/core/ai/mask/guard"
@@ -67,6 +68,9 @@ type Options struct {
 	// SystemProxy is the proxy the computer's settings give for a request to
 	// u, nil for none; nil is sysproxy.For. Tests stand in for it.
 	SystemProxy func(u *url.URL) *url.URL
+	// EWSNet is how Autodiscover reaches the network when an EWS account is
+	// added without its URL; zero is the system's. Tests point it at a fake.
+	EWSNet ews.Net
 	// Registry is where reviewed plugins are listed; nil turns the plugin
 	// directory off (DefaultRegistry is Godwit's own). The apps set it.
 	Registry *RegistrySource
@@ -704,7 +708,7 @@ func (s *Service) dialAccount(ctx context.Context, accountID int64) (recv backen
 	}
 	var ver uint64
 	var rejected, tok string
-	recv = newReceiver(acc.Receiving, func(ctx context.Context) (backend.Credentials, error) {
+	recv = newReceiver(acc.Receiving, acc.Email, func(ctx context.Context) (backend.Credentials, error) {
 		cr, v, err := s.slotCredentials(ctx, acc, false, rejected)
 		tok, ver = cr.Token, v
 		return cr, err
@@ -834,7 +838,8 @@ func (s *Service) syncAccount(ctx context.Context, accountID int64, explicit boo
 // checkSMTP reports whether the outbox may use SMTP: never for a
 // receive-only account. After SMTP refused the
 // password the outbox pauses: a worker sync skips it without logging in, and an
-// explicit SyncNow tries one SMTP login, which on success clears smtp_reauth.
+// explicit SyncNow tries one SMTP login (Graph or EWS for an account that
+// sends through it), which on success clears smtp_reauth.
 func (s *Service) checkSMTP(ctx context.Context, accountID int64, explicit bool) (bool, error) {
 	rows, err := s.db.Query(ctx, "SELECT smtp_reauth, receive_only FROM accounts WHERE id = ?", accountID)
 	if err != nil || len(rows.Values) == 0 {
@@ -855,8 +860,14 @@ func (s *Service) checkSMTP(ctx context.Context, accountID int64, explicit bool)
 	}
 	sa := &sendAuth{s: s, acc: acc}
 	login := func() error {
-		if sa.acc.Sending.Protocol == auth.Graph {
+		switch sa.acc.Sending.Protocol {
+		case auth.Graph:
 			_, err := sa.credentials(ctx) // a Graph token in hand is the check
+			return err
+		case auth.EWS: // an EWS account sends through EWS: sign in there, never to SMTP
+			r := ews.New(ews.Config{URL: ewsURL(sa.acc), Credentials: sa.credentials})
+			defer r.Close()
+			_, err := r.Check(ctx)
 			return err
 		}
 		return sa.smtp().Check(ctx)

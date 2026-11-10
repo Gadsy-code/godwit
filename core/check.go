@@ -13,6 +13,7 @@ import (
 
 	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/backend/conn"
+	"github.com/godwit-email/godwit/backend/ews"
 	"github.com/godwit-email/godwit/backend/imapbackend"
 	"github.com/godwit-email/godwit/backend/jmap"
 	"github.com/godwit-email/godwit/backend/pop3"
@@ -22,10 +23,18 @@ import (
 // KindInvalid marks a failed settings step: the input itself is not valid.
 const KindInvalid conn.FailureKind = "invalid"
 
-const checkTimeout = 20 * time.Second
+// KindConfirm marks an ews step stopped before Autodiscover sends the
+// password to a host outside the address's domain: CheckReport.Confirm.
+const KindConfirm conn.FailureKind = "confirm"
+
+const (
+	checkTimeout    = 20 * time.Second
+	discoverTimeout = 45 * time.Second // Autodiscover tries up to four places, each SOAP and POX
+)
 
 // CheckStep is one item of a connection check. Name is settings, imap (jmap
-// for a JMAP account) or smtp.
+// for a JMAP account, ews for an EWS one) or smtp; an EWS account sends
+// through the server it receives from, so its check has no smtp step.
 // Detail comes from conn's already redacted errors: no password, token or server text.
 type CheckStep struct {
 	Name    string
@@ -38,10 +47,16 @@ type CheckStep struct {
 // Folders is how many selectable folders the imap step listed (0 if LIST
 // failed). Host is the host the receiving step signed in to, as host:port:
 // for JMAP the session's, which may be another than the one typed in.
+// URL is the EWS URL Autodiscover found for an EWS account given none.
+// Confirm is the host, outside the address's domain, Autodiscover stopped
+// before sending the password to (the ews step's Kind is KindConfirm): the
+// user confirms it by checking again with it in AccountInput.ConfirmedHosts.
 type CheckReport struct {
 	Steps   []CheckStep
 	Folders int
 	Host    string
+	URL     string
+	Confirm string
 	desc    backend.Description // what the signed-in receiving backend declared; kept off the public report
 }
 
@@ -136,7 +151,12 @@ func (s *Service) check(ctx context.Context, in AccountInput, token string) (Che
 			if in.Receiving.Auth == AuthAPIToken {
 				cr = backend.Credentials{Username: user, Token: in.Password}
 			}
-			recv := newReceiver(in.Receiving, func(context.Context) (backend.Credentials, error) { return cr, nil })
+			if in.receiving() == auth.EWS && in.Receiving.Host == "" {
+				if kind, err := s.discover(ctx, &in, &r, cr); err != nil {
+					return kind, err
+				}
+			}
+			recv := newReceiver(in.Receiving, in.Email, func(context.Context) (backend.Credentials, error) { return cr, nil })
 			defer recv.Close()
 			ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 			defer cancel()
@@ -163,6 +183,9 @@ func (s *Service) check(ctx context.Context, in AccountInput, token string) (Che
 			return conn.Classify(err), err
 		},
 	}
+	if in.receiving() == auth.EWS {
+		r.Steps, steps = r.Steps[:2], steps[:2]
+	}
 	for i, run := range steps {
 		if first != nil {
 			r.Steps[i].Skipped = true
@@ -177,26 +200,86 @@ func (s *Service) check(ctx context.Context, in AccountInput, token string) (Che
 	return r, first
 }
 
-// newReceiver is the receiving backend of srv, signing in with creds.
-func newReceiver(srv Server, creds backend.CredentialsFunc) backend.Receiver {
+// discover finds in's EWS URL by Autodiscover and makes it both of in's
+// slots, as r.URL; a host to confirm first is r.Confirm.
+func (s *Service) discover(ctx context.Context, in *AccountInput, r *CheckReport, cr backend.Credentials) (conn.FailureKind, error) {
+	ctx, cancel := context.WithTimeout(ctx, discoverTimeout)
+	defer cancel()
+	u, err := ews.Discover(ctx, ews.DiscoverConfig{Email: in.Email, Confirmed: in.ConfirmedHosts, Net: s.opts.EWSNet,
+		Credentials: func(context.Context) (backend.Credentials, error) { return cr, nil }})
+	var confirm *ews.ConfirmError
+	if errors.As(err, &confirm) {
+		r.Confirm = confirm.Host
+		return KindConfirm, err
+	}
+	if err != nil {
+		return conn.Classify(err), err
+	}
+	srv, err := ewsSlot(u)
+	if err == nil {
+		in.Receiving, in.Sending = srv, srv
+		err = in.validate() // an http URL to another computer, say
+	}
+	if err != nil {
+		return KindInvalid, fmt.Errorf("Autodiscover gave the EWS URL %q: %w", u, err)
+	}
+	r.URL = u
+	return "", nil
+}
+
+// ewsSlot is the EWS slot of the EWS URL u.
+func ewsSlot(u string) (Server, error) {
+	p, err := url.Parse(u)
+	if err != nil {
+		return Server{}, err
+	}
+	srv := Server{Protocol: auth.EWS, Host: p.Hostname(), Port: 443, Security: SecurityTLS, Path: p.EscapedPath()}
+	switch p.Scheme {
+	case "https":
+	case "http":
+		srv.Port, srv.Security = 80, SecurityNone
+	default:
+		return Server{}, fmt.Errorf("scheme %q", p.Scheme)
+	}
+	if port := p.Port(); port != "" {
+		if srv.Port, err = strconv.Atoi(port); err != nil {
+			return Server{}, err
+		}
+	}
+	return srv, nil
+}
+
+// newReceiver is the receiving backend of srv for the account email, signing in with creds.
+func newReceiver(srv Server, email string, creds backend.CredentialsFunc) backend.Receiver {
 	switch srv.Protocol {
 	case auth.JMAP:
 		return jmap.New(jmap.Config{SessionURL: sessionURL(srv), Credentials: creds})
+	case auth.EWS:
+		return ews.New(ews.Config{URL: slotURL(srv, srv.Path), Address: email, Credentials: creds})
 	case auth.POP3:
 		return pop3.New(pop3.Config{Host: srv.Host, Port: srv.Port, Security: srv.Security, Credentials: creds})
 	}
 	return imapbackend.New(imapbackend.Config{Host: srv.Host, Port: srv.Port, Security: srv.Security, Credentials: creds})
 }
 
+// ewsURL is an EWS account's EWS URL, which it sends through too: the
+// receiving slot's, as the sending slot's path is not stored.
+func ewsURL(acc Account) string { return slotURL(acc.Receiving, acc.Receiving.Path) }
+
 // sessionURL is a JMAP slot's session resource: Path on the host, or
 // /.well-known/jmap to discover it.
 func sessionURL(srv Server) string {
-	u := url.URL{Scheme: "https", Host: net.JoinHostPort(srv.Host, strconv.Itoa(srv.Port)), Path: srv.Path}
+	return slotURL(srv, cmp.Or(srv.Path, "/.well-known/jmap"))
+}
+
+// slotURL is path on an HTTP slot's host: https, or http for SecurityNone.
+func slotURL(srv Server, path string) string {
+	u := url.URL{Scheme: "https", Host: net.JoinHostPort(srv.Host, strconv.Itoa(srv.Port)), Path: path}
+	if p, err := url.PathUnescape(path); err == nil { // a stored path is escaped (url.URL.EscapedPath)
+		u.Path, u.RawPath = p, path
+	}
 	if srv.Security == SecurityNone {
 		u.Scheme = "http"
-	}
-	if u.Path == "" {
-		u.Path = "/.well-known/jmap"
 	}
 	return u.String()
 }

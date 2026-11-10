@@ -50,6 +50,9 @@ type Settings struct {
 	// ExperimentalJMAP (实验性 JMAP) offers JMAP when adding an account; off
 	// by default. Off, JMAP accounts already added keep working.
 	ExperimentalJMAP bool
+	// ExperimentalEWS (实验性 EWS) offers Exchange (EWS) when adding an
+	// account; off by default. Off, EWS accounts already added keep working.
+	ExperimentalEWS bool
 	// ExperimentalPOP3 (实验性 POP3) offers POP3 when adding an account; off
 	// by default. Off, POP3 accounts already added keep working.
 	ExperimentalPOP3 bool

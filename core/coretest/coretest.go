@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-imap/v2"
+	"github.com/godwit-email/godwit/backend/ews"
 	"github.com/godwit-email/godwit/core"
 	"github.com/godwit-email/godwit/core/ai/mask"
 	"github.com/godwit-email/godwit/core/internal/testclock"
@@ -41,13 +42,15 @@ import (
 )
 
 type (
-	IMAP    = testmail.IMAP
-	JMAP    = testmail.JMAP
-	POP3    = testmail.POP3
-	SMTP    = testmail.Inbox
-	Turn    = testllm.Turn
-	Call    = testllm.Call
-	Request = testllm.Request
+	IMAP         = testmail.IMAP
+	JMAP         = testmail.JMAP
+	EWS          = testmail.EWS
+	Autodiscover = testmail.Autodiscover
+	POP3         = testmail.POP3
+	SMTP         = testmail.Inbox
+	Turn         = testllm.Turn
+	Call         = testllm.Call
+	Request      = testllm.Request
 )
 
 // The SMTP stages SMTP.Reply answers at.
@@ -71,12 +74,14 @@ type Env struct {
 	started map[string]*mailServers // StartServers' servers by IMAP address, until an account adopts them
 	egress  atomic.Int64
 	clock   *testclock.Clock
-	imap    []testmail.Option // every account's IMAP server's
+	imap    []testmail.Option             // every account's IMAP server's
+	ad      *atomic.Pointer[Autodiscover] // the network Autodiscover reaches: StartEWSAutodiscover's
 }
 
 type mailServers struct {
 	imap      *IMAP
 	jmap      *JMAP // a JMAP account's, instead of imap
+	ews       *EWS  // an EWS account's, instead of imap and smtp
 	pop3      *POP3 // a POP3 account's, instead of imap
 	smtp      *SMTP
 	smtpAddr  string
@@ -141,14 +146,28 @@ func New(t *testing.T, opts ...Option) *Env {
 	dir := t.TempDir()
 	imageClient := imagefetch.NewClient(true)
 	imageClient.Transport.(*imagefetch.Transport).DialContext = netOptions("").Dial
-	svc, err := core.New(context.Background(), core.Options{DataDir: dir, AutoSync: cfg.autoSync, SystemLanguage: "zh-CN", ImageClient: imageClient,
+	ad := new(atomic.Pointer[Autodiscover])
+	ewsNet := ews.Net{RootCAs: testmail.AutodiscoverRoots(),
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if a := ad.Load(); a != nil {
+				return a.Dial(ctx, network, addr)
+			}
+			return nil, &net.DNSError{Err: "coretest: no Autodiscover started", Name: addr, IsNotFound: true}
+		},
+		LookupSRV: func(ctx context.Context, service, proto, name string) (string, []*net.SRV, error) {
+			if a := ad.Load(); a != nil {
+				return a.LookupSRV(ctx, service, proto, name)
+			}
+			return "", nil, &net.DNSError{Err: "coretest: no Autodiscover started", Name: name, IsNotFound: true}
+		}}
+	svc, err := core.New(context.Background(), core.Options{EWSNet: ewsNet, DataDir: dir, AutoSync: cfg.autoSync, SystemLanguage: "zh-CN", ImageClient: imageClient,
 		Registry: cfg.registry, AppVersion: "1.2.0", SystemTranslator: cfg.sys, ConfirmWindow: cfg.confirm, UnsubscribeClient: cfg.unsub, Recognizer: cfg.model,
 		RecognitionModelSources: cfg.recognitionModel, RecognitionModelClient: &http.Client{Transport: imageClient.Transport}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { svc.Close() })
-	e := &Env{Svc: svc, DataDir: dir, servers: map[int64]*mailServers{}, started: map[string]*mailServers{}, clock: clock, imap: cfg.imap}
+	e := &Env{Svc: svc, DataDir: dir, servers: map[int64]*mailServers{}, started: map[string]*mailServers{}, clock: clock, imap: cfg.imap, ad: ad}
 	svc.SetClockForTest(e.clock)
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -321,6 +340,37 @@ func (e *Env) startJMAP(t *testing.T, email string) (core.AccountInput, *mailSer
 		Sending:   core.Server{Host: sh, Port: sp, Security: core.SecurityNone}}, &mailServers{jmap: jm, smtp: inbox, smtpAddr: addr}
 }
 
+// StartEWSServers starts a fake EWS server for email, not added yet, and
+// returns the account's input, with the EWS URL typed in, and the server.
+// Once the account is added, Deliver and EWS work for it as for AddAccount's.
+func (e *Env) StartEWSServers(t *testing.T, email string) (core.AccountInput, *EWS) {
+	t.Helper()
+	s := testmail.StartEWS(t)
+	u, err := url.Parse(s.URL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, p := splitHostPort(t, u.Host)
+	slot := core.Server{Protocol: "ews", Host: h, Port: p, Security: core.SecurityNone, Path: u.Path}
+	e.mu.Lock()
+	e.started[u.Host] = &mailServers{ews: s}
+	e.mu.Unlock()
+	return core.AccountInput{Email: email, Username: "alice", Password: "secret", Receiving: slot, Sending: slot}, s
+}
+
+// StartEWSAutodiscover starts a fake EWS server for email, as
+// StartEWSServers does, and Autodiscover in front of it, which answers as no
+// host until told to. The account's input has no EWS URL: the check finds it.
+func (e *Env) StartEWSAutodiscover(t *testing.T, email string) (core.AccountInput, *EWS, *Autodiscover) {
+	t.Helper()
+	in, s := e.StartEWSServers(t, email)
+	a := s.StartAutodiscover()
+	e.ad.Store(a)
+	in.Receiving = core.Server{Protocol: "ews"}
+	in.Sending = in.Receiving
+	return in, s, a
+}
+
 // StartPOP3Servers starts a fake POP3 server and an SMTP server for email,
 // not added yet, and returns the account's input. Once the account is added,
 // Deliver (to INBOX), POP3, SMTP and Sent work for it as for AddAccount's.
@@ -385,6 +435,9 @@ func (e *Env) mail(accountID int64) *mailServers {
 // IMAP is the account's fake IMAP server, for fault injection.
 func (e *Env) IMAP(accountID int64) *IMAP { return e.mail(accountID).imap }
 
+// EWS is the fake EWS server of an account added with StartEWSServers' input.
+func (e *Env) EWS(accountID int64) *EWS { return e.mail(accountID).ews }
+
 // JMAP is a ViaJMAP account's fake JMAP server.
 func (e *Env) JMAP(accountID int64) *JMAP { return e.mail(accountID).jmap }
 
@@ -423,6 +476,8 @@ func (e *Env) Deliver(t *testing.T, accountID int64, folder string, raw []byte) 
 	}
 	if m.jmap != nil {
 		m.jmap.Deliver(folder, raw)
+	} else if m.ews != nil {
+		m.ews.Deliver(folder, raw)
 	} else if m.pop3 != nil {
 		if folder != "INBOX" {
 			t.Fatalf("coretest: a POP3 server has no folder %q", folder)

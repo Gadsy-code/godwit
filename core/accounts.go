@@ -81,6 +81,9 @@ func validSecurity(s Security) bool {
 // ErrJMAPOff refuses to add a JMAP account while Settings.ExperimentalJMAP is off.
 var ErrJMAPOff = errors.New("JMAP is experimental: turn it on in settings to add a JMAP account")
 
+// ErrEWSOff refuses to add an EWS account while Settings.ExperimentalEWS is off.
+var ErrEWSOff = errors.New("EWS is experimental: turn it on in settings to add an Exchange (EWS) account")
+
 // errPOP3Off refuses to add a POP3 account while Settings.ExperimentalPOP3 is
 // off. It has no wire code: TestWireCodesPinned pins the codes, and the UI
 // hides POP3 while the setting is off, so only a program can meet it.
@@ -105,6 +108,16 @@ func (in AccountInput) receiving() string {
 	return in.Receiving.Protocol
 }
 
+// sending is the protocol a new or changed account sends with: EWS through
+// EWS, any other first through SMTP (Graph is stored only after SMTP
+// refused AUTH).
+func (in AccountInput) sending() string {
+	if in.receiving() == auth.EWS {
+		return auth.EWS
+	}
+	return auth.SMTP
+}
+
 func (in AccountInput) validate() error {
 	if _, err := mail.ParseAddress(in.Email); err != nil {
 		return fmt.Errorf("invalid email address %q", in.Email)
@@ -114,12 +127,19 @@ func (in AccountInput) validate() error {
 		slot, name string
 		ok         bool
 		Server
-	}{{"receiving", strings.ToUpper(recv), recv == auth.IMAP || recv == auth.JMAP || recv == auth.POP3 && in.allowPOP3, in.Receiving},
+	}{{"receiving", strings.ToUpper(recv), recv == auth.IMAP || recv == auth.JMAP || recv == auth.EWS || recv == auth.POP3 && in.allowPOP3, in.Receiving},
 		// Graph is not chosen but stored after SMTP refused AUTH; a stored
 		// account's servers come back with it.
-		{"sending", "SMTP", in.Sending.Protocol == "" || in.Sending.Protocol == auth.SMTP || in.Sending.Protocol == auth.Graph, in.Sending}} {
+		{"sending", strings.ToUpper(in.sending()), in.Sending.Protocol == "" || in.Sending.Protocol == in.sending() ||
+			in.Sending.Protocol == auth.Graph && recv != auth.EWS, in.Sending}} {
+		http := e.name == "JMAP" || e.name == "EWS"
 		if !e.ok {
 			return fmt.Errorf("%s protocol %q is not supported", e.slot, e.Protocol)
+		}
+		if bare := e.Server; e.name == "EWS" && (bare.Auth == "" || bare.Auth == AuthPassword) {
+			if bare.Auth = ""; bare == (Server{Protocol: e.Protocol}) {
+				continue // Autodiscover finds it
+			}
 		}
 		if e.Host == "" {
 			return fmt.Errorf("%s host is required", e.name)
@@ -127,13 +147,14 @@ func (in AccountInput) validate() error {
 		if e.Port < 1 || e.Port > 65535 {
 			return fmt.Errorf("%s port %d is out of range", e.name, e.Port)
 		}
-		if !validSecurity(e.Security) || e.name == "JMAP" && e.Security == SecurityStartTLS {
+		if !validSecurity(e.Security) || http && e.Security == SecurityStartTLS {
 			return fmt.Errorf("%s security %q is invalid", e.name, e.Security)
 		}
-		if !(e.Auth == "" || e.Auth == AuthPassword || e.Auth == AuthOAuth || e.Auth == AuthAPIToken && e.name == "JMAP") {
+		if !(e.Auth == "" || e.Auth == AuthPassword || e.Auth == AuthOAuth && e.name != "EWS" || e.Auth == AuthAPIToken && e.name == "JMAP") {
 			return fmt.Errorf("%s sign-in %q is not supported", e.name, e.Auth)
 		}
-		if e.Path != "" && (e.name != "JMAP" || !strings.HasPrefix(e.Path, "/") || strings.ContainsAny(e.Path, "?# ")) {
+		if e.Path != "" && (!http || !strings.HasPrefix(e.Path, "/") || strings.ContainsAny(e.Path, "?# ")) ||
+			e.Path == "" && e.name == "EWS" { // the EWS URL's
 			return fmt.Errorf("%s path %q is invalid", e.name, e.Path)
 		}
 		if e.Security == SecurityNone && !isLoopback(e.Host) {
@@ -228,6 +249,15 @@ func (s *Service) AddAccount(ctx context.Context, in AccountInput) (Account, err
 			return Account{}, ErrJMAPOff
 		}
 	}
+	if in.receiving() == auth.EWS {
+		st, err := s.loadSettings(ctx)
+		if err != nil {
+			return Account{}, err
+		}
+		if !st.ExperimentalEWS {
+			return Account{}, ErrEWSOff
+		}
+	}
 	if err := s.allowPOP3(ctx, &in); err != nil {
 		return Account{}, err
 	}
@@ -238,6 +268,12 @@ func (s *Service) AddAccount(ctx context.Context, in AccountInput) (Account, err
 	receiveOnly := in.ReceiveOnly && checked.OnlySMTPFailed()
 	if checkErr != nil && !receiveOnly {
 		return Account{}, &CheckError{Report: checked, err: checkErr}
+	}
+	if checked.URL != "" { // found by Autodiscover
+		in.Receiving, _ = ewsSlot(checked.URL)
+	}
+	if in.receiving() == auth.EWS {
+		in.Sending = in.Receiving // it sends through the receiving EWS URL
 	}
 	if in.OAuthFlowID != "" {
 		// Peeked for the check; taken now, so one grant adds one account.
@@ -283,9 +319,9 @@ func (s *Service) AddAccount(ctx context.Context, in AccountInput) (Account, err
 	stmts = append(stmts, sqlite.Statement{
 		SQL: `INSERT INTO accounts(email, name, alias, is_default, sync_limit, sync_since_months, recv_auth, send_auth, status, username,
 			recv_protocol, recv_host, recv_port, recv_security, recv_path, send_protocol, send_host, send_port, send_security, created_at, provider, oauth_client_id, features, receive_only, position)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?, 'smtp', ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM accounts))`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM accounts))`,
 		Args: []any{in.Email, in.Name, in.Alias, b2i(isDefault), sync.Limit, sync.Months, recvAuth, sendAuth, in.username(),
-			in.receiving(), in.Receiving.Host, in.Receiving.Port, string(in.Receiving.Security), in.Receiving.Path, in.Sending.Host, in.Sending.Port, string(in.Sending.Security), time.Now().Unix(), in.Provider, in.oauthClientID, encodeFeatures(checked.desc), b2i(receiveOnly)},
+			in.receiving(), in.Receiving.Host, in.Receiving.Port, string(in.Receiving.Security), in.Receiving.Path, in.sending(), in.Sending.Host, in.Sending.Port, string(in.Sending.Security), time.Now().Unix(), in.Provider, in.oauthClientID, encodeFeatures(checked.desc), b2i(receiveOnly)},
 	})
 	inserted := len(stmts) - 1
 	if in.receiving() == auth.POP3 { // the server has only an inbox: trash, archive and sent are local (no server_ref)
@@ -450,6 +486,10 @@ func scanAccount(r []any) Account {
 		Provider:  store.Str(r[17]), StatusDetail: store.Str(r[18]), SignatureID: store.Int(r[21]), Icon: store.Str(r[22]),
 		AIInstructions: store.Str(r[23]), OAuthClientID: store.Str(r[24]), LabelKeywords: store.Int(r[25]) == 1, Kind: store.Str(r[26]),
 		ReceiveOnly: store.Int(r[27]) == 1,
+	}
+	if a.Receiving.Protocol == auth.EWS { // it sends through the receiving EWS URL, whose path only recv_path keeps
+		r := a.Receiving
+		a.Sending.Protocol, a.Sending.Host, a.Sending.Port, a.Sending.Security, a.Sending.Path = auth.EWS, r.Host, r.Port, r.Security, r.Path
 	}
 	if d, ok := decodeFeatures(r[30]); ok {
 		a.Features = d.Features
@@ -787,6 +827,9 @@ func (s *Service) UpdateAccount(ctx context.Context, id int64, p AccountPatch) (
 		if in.Receiving.Protocol != acc.Receiving.Protocol {
 			return Account{}, errors.New("an account's receiving protocol cannot change: add the account again")
 		}
+		if in.receiving() == auth.EWS {
+			in.Sending = in.Receiving // the same endpoint; the stored sending slot has no path
+		}
 		in.Receiving.Auth, in.Sending.Auth = acc.Receiving.Auth, acc.Sending.Auth // the sign-in stays
 		r, err := s.checkStored(ctx, acc, &in)
 		var ce *CheckError
@@ -798,6 +841,10 @@ func (s *Service) UpdateAccount(ctx context.Context, id int64, p AccountPatch) (
 		if err != nil && !(acc.ReceiveOnly && r.OnlySMTPFailed()) {
 			return Account{}, err
 		}
+		if r.URL != "" { // found by Autodiscover
+			in.Receiving, _ = ewsSlot(r.URL)
+			in.Sending = in.Receiving
+		}
 		set("receive_only", b2i(err != nil))
 		set("username", in.username())
 		set("recv_host", in.Receiving.Host)
@@ -808,7 +855,7 @@ func (s *Service) UpdateAccount(ctx context.Context, id int64, p AccountPatch) (
 		set("send_host", in.Sending.Host)
 		set("send_port", in.Sending.Port)
 		set("send_security", string(in.Sending.Security))
-		set("send_protocol", auth.SMTP) // new servers: the next send tries SMTP before Graph again
+		set("send_protocol", in.sending()) // new servers: the next send tries SMTP before Graph again (EWS stays EWS)
 		// The checked settings work: the user just fixed the sign-in.
 		set("status", "ok")
 		set("status_detail", "")

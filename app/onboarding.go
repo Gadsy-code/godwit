@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/mail"
@@ -12,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/godwit-email/godwit/backend/ews"
 	"github.com/godwit-email/godwit/backend/pop3"
 	"github.com/godwit-email/godwit/core"
 	"github.com/godwit-email/godwit/core/auth"
@@ -79,10 +81,13 @@ type onboarding struct {
 	imapHost, imapPort   string
 	smtpHost, smtpPort   string
 	imapSec, smtpSec     core.Security
-	proto                string // the server form's receiving protocol: IMAP (""), auth.JMAP or auth.POP3 (their Settings.Experimental*)
-	jmapURL              string // JMAP's session URL, in place of the IMAP server
-	jmapAuth             int    // how JMAP signs in: 0 a password, 1 an API token, with SMTP's password apart
-	sendSecret           string // SMTP's own password, for a JMAP API token
+	proto                string              // the server form's receiving protocol: IMAP (""), auth.JMAP, auth.POP3 or auth.EWS (their Settings.Experimental*)
+	jmapURL              string              // JMAP's session URL, in place of the IMAP server
+	ewsURL               string              // the EWS URL, in place of the IMAP and SMTP servers; "" finds it by Autodiscover
+	ewsAdvanced          bool                // the EWS URL field is shown: opened, or Autodiscover found nothing
+	confirmed            map[string][]string // per lowercased email address: hosts outside its domain the user let Autodiscover send the password to
+	jmapAuth             int                 // how JMAP signs in: 0 a password, 1 an API token, with SMTP's password apart
+	sendSecret           string              // SMTP's own password, for a JMAP API token
 	showSendSecret       bool
 	flowID, authURL      string
 	oauthErr             error
@@ -404,15 +409,38 @@ func (o *onboarding) jmap() bool { return o.proto == auth.JMAP && !o.oauth() }
 // pop3: the account is added over POP3, its servers form says.
 func (o *onboarding) pop3() bool { return o.proto == auth.POP3 && !o.oauth() }
 
-// recvStep is the check's receiving step: imap, jmap or pop3.
+// ews: the account is added over EWS, its servers form says.
+func (o *onboarding) ews() bool { return o.proto == auth.EWS && !o.oauth() }
+
+// recvStep is the check's receiving step: imap, jmap, pop3 or ews.
 func (o *onboarding) recvStep() string {
 	switch {
 	case o.jmap():
 		return auth.JMAP
+	case o.ews():
+		return auth.EWS
 	case o.pop3():
 		return auth.POP3
 	}
 	return auth.IMAP
+}
+
+// checkSteps are the check's steps before it reports: an EWS account sends
+// through the server it receives from, so it has no smtp step.
+func (o *onboarding) checkSteps() []core.CheckStep {
+	steps := []core.CheckStep{{Name: "settings"}, {Name: o.recvStep()}, {Name: "smtp"}}
+	if o.ews() {
+		return steps[:2]
+	}
+	return steps
+}
+
+// ewsServer is the slot an EWS URL gives, as jmapServer reads it; the URL
+// must name the endpoint's path.
+func ewsServer(raw string) (core.Server, bool) {
+	s, ok := jmapServer(raw)
+	s.Protocol = auth.EWS
+	return s, ok && s.Path != ""
 }
 
 // jmapServer is the receiving slot a JMAP session URL gives: https, or http
@@ -457,6 +485,13 @@ func (o *onboarding) input() core.AccountInput {
 	if o.jmap() {
 		in.Receiving, _ = jmapServer(o.jmapURL)
 	}
+	if o.ews() {
+		in.Receiving = core.Server{Protocol: auth.EWS}                       // Autodiscover finds it
+		if u := cmp.Or(strings.TrimSpace(o.ewsURL), o.report.URL); u != "" { // typed in, or found by the check
+			in.Receiving, _ = ewsServer(u)
+		}
+		in.Sending, in.ConfirmedHosts = in.Receiving, o.confirmed[strings.ToLower(in.Email)]
+	}
 	if o.pop3() {
 		in.Receiving.Protocol = auth.POP3
 	}
@@ -468,7 +503,7 @@ func (o *onboarding) input() core.AccountInput {
 	if o.apiToken() {
 		in.Receiving.Auth, in.SendPassword = core.AuthAPIToken, o.sendSecret
 	}
-	if testSecurity != "" {
+	if testSecurity != "" && !o.ews() { // an EWS URL says its own
 		in.Sending.Security = testSecurity
 		if !o.jmap() { // a JMAP URL says its own
 			in.Receiving.Security = testSecurity
@@ -489,7 +524,11 @@ func (o *onboarding) connect() {
 	o.checking, o.report, o.receiveOnly = true, core.CheckReport{}, false
 	if o.invalid, o.invalidNext = o.validate(); o.invalid != "" {
 		o.checking = false
-		o.report.Steps = []core.CheckStep{{Name: "settings", Kind: core.KindInvalid}, {Name: o.recvStep(), Skipped: true}, {Name: "smtp", Skipped: true}}
+		o.report.Steps = o.checkSteps()
+		o.report.Steps[0].Kind = core.KindInvalid
+		for i := range o.report.Steps[1:] {
+			o.report.Steps[i+1].Skipped = true
+		}
 		return
 	}
 	gen, svc, in := o.gen, o.a.svc, o.input()
@@ -509,6 +548,9 @@ func (o *onboarding) connect() {
 			return
 		}
 		o.report = r
+		if o.ews() && len(r.Steps) > 1 && r.Steps[1].Detail == ews.ReasonNoAutodiscover {
+			o.ewsAdvanced = true // the user types the URL in
+		}
 		if r.OK() {
 			o.goTo(stepDone)
 			b := newBurst()
@@ -537,6 +579,12 @@ func (o *onboarding) validate() (reason, next string) {
 			return i18n.T("onboarding.invalid.jmap_url"), i18n.T("onboarding.next.host")
 		}
 		servers = servers[1:]
+	}
+	if o.ews() {
+		if _, ok := ewsServer(o.ewsURL); !ok && strings.TrimSpace(o.ewsURL) != "" {
+			return i18n.T("onboarding.invalid.ews_url"), i18n.T("onboarding.next.host")
+		}
+		servers = nil
 	}
 	for _, sv := range servers {
 		if strings.TrimSpace(sv.host) == "" {
@@ -1042,6 +1090,9 @@ func (o *onboarding) serversForm(c *ui.Context) {
 		if o.a.settings.ExperimentalJMAP || o.proto == auth.JMAP {
 			protos, labels = append(protos, auth.JMAP), append(labels, i18n.T("onboarding.protocol.jmap"))
 		}
+		if o.a.settings.ExperimentalEWS || o.proto == auth.EWS {
+			protos, labels = append(protos, auth.EWS), append(labels, i18n.T("onboarding.protocol.ews"))
+		}
 		if o.a.settings.ExperimentalPOP3 || o.proto == auth.POP3 {
 			protos, labels = append(protos, auth.POP3), append(labels, i18n.T("onboarding.protocol.pop3"))
 		}
@@ -1053,6 +1104,19 @@ func (o *onboarding) serversForm(c *ui.Context) {
 					o.setProto(protos[sel])
 				}
 			}).FontSize(t.Text.Sm).TextColor(t.Muted)
+		}
+		if o.ews() { // one server for both, found by Autodiscover unless typed in; a login name that may not be the address
+			ui.Field(c, i18n.T("onboarding.ews.login"), func() {
+				kit.Input(c, &o.username, kit.InputOpts{Placeholder: i18n.T("onboarding.username.placeholder")})
+			}).Description(i18n.T("onboarding.ews.login.help")).FontSize(t.Text.Sm).TextColor(t.Muted)
+			if !o.ewsAdvanced && o.ewsURL == "" {
+				kit.Button(c, i18n.T("onboarding.ews.advanced"), kit.ButtonOpts{Variant: kit.Ghost, Size: kit.SizeSm}).OnClick(func() { o.ewsAdvanced = true })
+				return
+			}
+			ui.Field(c, i18n.T("onboarding.ews.url"), func() {
+				kit.Input(c, &o.ewsURL, kit.InputOpts{Placeholder: "https://mail.example.com/EWS/Exchange.asmx"})
+			}).Description(i18n.T("onboarding.ews.url.help")).FontSize(t.Text.Sm).TextColor(t.Muted)
+			return
 		}
 		if o.jmap() {
 			ui.Field(c, i18n.T("onboarding.jmap.url"), func() { kit.Input(c, &o.jmapURL, kit.InputOpts{Placeholder: "https://example.com/.well-known/jmap"}) }).
@@ -1117,18 +1181,22 @@ func (o *onboarding) checkRow(st core.CheckStep) (text, detail string, status in
 			if o.manual || o.prov.ID == "other" {
 				src = "manual"
 			}
-			host := o.imapHost
+			host, sendHost := o.imapHost, o.smtpHost
 			if o.jmap() {
 				s, _ := jmapServer(o.jmapURL)
 				host = s.Host
 			}
-			detail = i18n.Tf("onboarding.check.settings."+src, host, o.smtpHost)
+			if o.ews() {
+				s, _ := ewsServer(cmp.Or(strings.TrimSpace(o.ewsURL), o.report.URL))
+				host, sendHost = s.Host, s.Host
+			}
+			detail = i18n.Tf("onboarding.check.settings."+src, host, sendHost)
 		}
 		if st.Name == auth.IMAP {
 			detail = o.foldersText()
 		}
-		if st.Name == auth.JMAP { // where the credentials went, which discovery may have moved
-			detail = i18n.Tf("onboarding.check.jmap.host", o.report.Host)
+		if st.Name == auth.JMAP || st.Name == auth.EWS { // where the credentials went, which discovery may have moved
+			detail = i18n.Tf(k+".host", o.report.Host)
 			if f := o.foldersText(); f != "" {
 				detail += " · " + f
 			}
@@ -1142,6 +1210,8 @@ func (o *onboarding) checkRow(st core.CheckStep) (text, detail string, status in
 		return i18n.Tf(k+".failed", o.settingsReason(st)), o.settingsNext(), 2
 	}
 	switch kind := string(st.Kind); kind {
+	case string(core.KindConfirm): // Autodiscover waits for the user before the password leaves the domain
+		return i18n.Tf(k+".confirm", o.report.Confirm), i18n.T("onboarding.next.confirm"), 2
 	case "auth":
 		switch login := loginOf(o.prov); {
 		case o.oauth():
@@ -1153,6 +1223,15 @@ func (o *onboarding) checkRow(st core.CheckStep) (text, detail string, status in
 		}
 	case "dns", "connect", "timeout", "tls", "protocol":
 		reason, next = i18n.T("onboarding.reason."+kind), i18n.T("onboarding.next.server")
+		if st.Detail == ews.ReasonServerTooOld { // the server cannot be used at all, not merely misconfigured
+			reason, next = i18n.T("feature.reason."+st.Detail), i18n.T("onboarding.next.davmail")
+		}
+		if st.Detail == ews.ReasonNoAutodiscover {
+			reason, next = i18n.T("feature.reason."+st.Detail), i18n.T("onboarding.next.ews_url")
+		}
+		if st.Detail == ews.ReasonExtendedProtection { // the reason says to ask the administrator
+			reason, next = i18n.T("feature.reason."+st.Detail), ""
+		}
 		if st.Detail == pop3.ReasonNoUIDL { // the server cannot be used at all, not merely misconfigured
 			reason = i18n.T("feature.reason." + st.Detail)
 		}
@@ -1210,7 +1289,7 @@ func (o *onboarding) checkView(c *ui.Context) {
 	t, th := theme.Of(c), c.Theme()
 	steps := o.report.Steps
 	if o.checking || len(steps) == 0 {
-		steps = []core.CheckStep{{Name: "settings"}, {Name: o.recvStep()}, {Name: "smtp"}}
+		steps = o.checkSteps()
 	}
 	failed := !o.checking && !o.report.OK()
 	title := i18n.T("onboarding.check.connecting")
@@ -1246,6 +1325,18 @@ func (o *onboarding) checkView(c *ui.Context) {
 			})
 		}
 	})
+	if failed && o.report.Confirm != "" {
+		host := o.report.Confirm
+		kit.Button(c, i18n.Tf("onboarding.confirm_host", host), kit.ButtonOpts{Size: kit.SizeLg}).PaddingX(th.Space(3.5)).
+			OnClick(func() {
+				if o.confirmed == nil {
+					o.confirmed = map[string][]string{}
+				}
+				addr := strings.ToLower(strings.TrimSpace(o.email))
+				o.confirmed[addr] = append(o.confirmed[addr], host)
+				o.connect()
+			})
+	}
 	if failed {
 		ui.Row(c).Gap(th.Space(2)).Children(func() {
 			if o.oauth() {
