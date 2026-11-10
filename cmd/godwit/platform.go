@@ -47,6 +47,7 @@ type platform struct {
 	codeBanner     *signInBanner
 	updateTray     func()
 	setTrayVisible func(visible bool)
+	trayLight      *mygo.MenuItem // 轻量后台's checkbox, nil before the tray exists
 
 	dataDir      string
 	svc          *core.Service
@@ -434,6 +435,9 @@ func (p *platform) Print(message int64) {
 func (p *platform) SettingsChanged(st core.Settings) {
 	if !st.NotifyNewMail || !st.NotifyPreview {
 		p.ShowSignInCode(nil)
+	}
+	if p.trayLight != nil { // the settings page's switch and the tray's checkbox are one setting
+		p.trayLight.SetChecked(st.LightBackground)
 	}
 	if err := webui.ThemeChanged.Broadcast(webui.ThemeOf(st)); err != nil {
 		log.Printf("theme to the pages: %v", err)

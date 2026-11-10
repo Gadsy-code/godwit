@@ -989,6 +989,8 @@
   "settings_labels_untitled": "Nuova etichetta",
   "settings_language": "Lingua",
   "settings_launch_at_login": "Apri al login",
+  "settings_light_background": "Secondo piano leggero",
+  "settings_light_background_help": "In background viene sincronizzata solo la posta in arrivo; le altre cartelle si aggiornano al ritorno",
   "settings_launch_at_login_help": "Avvia Godwit in background dopo l’accesso",
   "settings_local_api": "API locale",
   "settings_local_api_client_off": "{arg1} scollegato.",

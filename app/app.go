@@ -496,10 +496,11 @@ func (a *App) load() {
 			a.accountLabels = accLabels
 		}
 		if settled && ver == a.settingsVer && ver == a.settingsSavedVer { // else st may predate a local change
-			if a.settings.RemoteImages != st.RemoteImages {
-				a.mail.reader.invalidateAvatars(true)
-			}
+			old := a.settings
 			a.settings, a.settingsOK = st, st
+			if !sameSettings(old, st) {
+				a.settingsEffects(old, st)
+			}
 			a.mail.reader.refreshAvatars()
 		}
 		a.syncLocalAPI()
@@ -631,6 +632,13 @@ func (a *App) SetForeground(on bool) {
 	if on {
 		a.plat.ShowSignInCode(nil)
 	}
+	a.applyLightBackground(a.settings)
+}
+
+// applyLightBackground narrows the Service's syncs to the inbox while the
+// window is behind another one, if st asks for it.
+func (a *App) applyLightBackground(st core.Settings) {
+	a.svc.SetLightBackground(st.LightBackground && !a.foreground)
 }
 
 // OnUI posts f to the UI thread unless the App has closed by then, for
