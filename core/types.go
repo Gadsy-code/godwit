@@ -3,10 +3,11 @@ package core
 import (
 	"context"
 
-	"github.com/godwit-email/godwit/core/conn"
+	"github.com/godwit-email/godwit/backend"
+	"github.com/godwit-email/godwit/backend/conn"
 )
 
-// Security is the transport protection of an IMAP or SMTP connection.
+// Security is the transport protection of a connection to a server.
 type Security = conn.Security
 
 const (
@@ -17,16 +18,14 @@ const (
 
 // AccountInput is what the user supplies to add or test an account.
 type AccountInput struct {
-	Email, Name, Alias, Signature, Username, Password string
-	IsDefault                                         bool
-	Sync                                              *SyncRange // nil: the newest 2000 per folder
-	IMAPHost                                          string
-	IMAPPort                                          int
-	IMAPSecurity                                      Security
-	SMTPHost                                          string
-	SMTPPort                                          int
-	SMTPSecurity                                      Security
-	Provider                                          string // auth.Provider ID; empty is stored as other
+	Email, Name, Alias, Signature, Username, Password string // Password: Receiving.Auth's secret, an API token for AuthAPIToken
+	// SendPassword is the sending server's own password; "" signs in to it
+	// with Password, which an API token cannot.
+	SendPassword       string
+	IsDefault          bool
+	Sync               *SyncRange // nil: the newest 2000 per folder
+	Receiving, Sending Server
+	Provider           string // auth.Provider ID; empty is stored as other
 	// OAuthFlowID names a finished AwaitOAuth flow: the account signs in with its
 	// tokens instead of Password, and Email must be the signed-in address.
 	OAuthFlowID string
@@ -58,16 +57,15 @@ type Account struct {
 	Sync                                    SyncRange
 	Folders                                 int // folders synced so far: 0 before the first sync
 	AuthType, Status                        string
-	IMAPHost                                string
-	IMAPPort                                int
-	IMAPSecurity                            Security
-	SMTPHost                                string
-	SMTPPort                                int
-	SMTPSecurity                            Security
+	Receiving, Sending                      Server // a local archive's are zero
 	Provider, StatusDetail                  string
 	OAuthClientID                           string // the user's own OAuth client (OAuthClient), "" the provider's
 	Kind                                    string // "" a mail account, KindLocalArchive
 	ReceiveOnly                             bool   // added without working SMTP: it syncs but never sends (ErrReceiveOnly)
+	// Features is what its receiving server can do (协议能力), recorded at
+	// the add-account check, a server change and each sign-in (ADR 0034);
+	// nil before the first. See Unsupported.
+	Features map[backend.Feature]backend.Support
 }
 
 // KindLocalArchive is an account with no servers or credentials: it never
@@ -85,17 +83,36 @@ type Folder struct {
 	Total         int
 }
 
-// ServerSettings replaces an account's username and IMAP and SMTP servers. An
-// empty Username means the email address.
+// ServerSettings replaces an account's username and servers. An empty
+// Username means the email address.
 type ServerSettings struct {
-	Username     string
-	IMAPHost     string
-	IMAPPort     int
-	IMAPSecurity Security
-	SMTPHost     string
-	SMTPPort     int
-	SMTPSecurity Security
+	Username           string
+	Receiving, Sending Server
 }
+
+// Server is one of an account's two server slots, receiving and sending: a
+// protocol and where its server is. Receiving is auth.IMAP or auth.JMAP
+// (only with Settings.ExperimentalJMAP to add one) and sending auth.SMTP;
+// an empty Protocol in input is auth.IMAP and auth.SMTP.
+type Server struct {
+	Protocol string
+	Host     string
+	Port     int
+	Security Security // JMAP: SecurityTLS is https, SecurityNone http (localhost only)
+	// Path is JMAP's session resource on Host, as a session URL typed in
+	// gives it; "" discovers it at /.well-known/jmap. Other protocols have none.
+	Path string
+	// Auth is how the slot signs in: AuthPassword ("" in input), AuthAPIToken
+	// (JMAP receiving only) or AuthOAuth, which only an OAuth flow sets.
+	Auth string
+}
+
+// How a server slot signs in (Server.Auth).
+const (
+	AuthPassword = "password"  // a password: IMAP LOGIN, SMTP AUTH, HTTP Basic
+	AuthAPIToken = "api_token" // an API token sent as HTTP Bearer (JMAP)
+	AuthOAuth    = "oauth"     // an OAuth access token
+)
 
 // SyncRange is how much of each folder a sync fetches: the newest Limit
 // messages, the mail of the last Months months, or (both 0) all of it.

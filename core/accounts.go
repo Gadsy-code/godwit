@@ -42,10 +42,14 @@ func (s *Service) keyringUser(id int64) string {
 // oauthClientUser is the keychain entry of the account's own OAuth client secret.
 func (s *Service) oauthClientUser(id int64) string { return s.keyringUser(id) + "/oauth-client" }
 
+// sendUser is the keychain entry of the sending slot's own password, when it
+// has one; else it signs in with the receiving slot's (keyringUser).
+func (s *Service) sendUser(id int64) string { return s.keyringUser(id) + "/send" }
+
 // deleteCredentials removes the account's keychain entries; missing ones are fine.
 func (s *Service) deleteCredentials(id int64) error {
 	var errs []error
-	for _, u := range []string{s.keyringUser(id), s.oauthClientUser(id)} {
+	for _, u := range []string{s.keyringUser(id), s.oauthClientUser(id), s.sendUser(id)} {
 		if err := keychainDelete(u); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 			errs = append(errs, err)
 		}
@@ -73,30 +77,61 @@ func validSecurity(s Security) bool {
 	return s == SecurityTLS || s == SecurityStartTLS || s == SecurityNone
 }
 
+// ErrJMAPOff refuses to add a JMAP account while Settings.ExperimentalJMAP is off.
+var ErrJMAPOff = errors.New("JMAP is experimental: turn it on in settings to add a JMAP account")
+
+// receiving is the receiving slot's protocol, "" read as IMAP.
+func (in AccountInput) receiving() string {
+	if in.Receiving.Protocol == "" {
+		return auth.IMAP
+	}
+	return in.Receiving.Protocol
+}
+
 func (in AccountInput) validate() error {
 	if _, err := mail.ParseAddress(in.Email); err != nil {
 		return fmt.Errorf("invalid email address %q", in.Email)
 	}
+	recv := in.receiving()
 	for _, e := range []struct {
-		name string
-		host string
-		port int
-		sec  Security
-	}{{"IMAP", in.IMAPHost, in.IMAPPort, in.IMAPSecurity}, {"SMTP", in.SMTPHost, in.SMTPPort, in.SMTPSecurity}} {
-		if e.host == "" {
+		slot, name string
+		ok         bool
+		Server
+	}{{"receiving", strings.ToUpper(recv), recv == auth.IMAP || recv == auth.JMAP, in.Receiving},
+		// Graph is not chosen but stored after SMTP refused AUTH; a stored
+		// account's servers come back with it.
+		{"sending", "SMTP", in.Sending.Protocol == "" || in.Sending.Protocol == auth.SMTP || in.Sending.Protocol == auth.Graph, in.Sending}} {
+		if !e.ok {
+			return fmt.Errorf("%s protocol %q is not supported", e.slot, e.Protocol)
+		}
+		if e.Host == "" {
 			return fmt.Errorf("%s host is required", e.name)
 		}
-		if e.port < 1 || e.port > 65535 {
-			return fmt.Errorf("%s port %d is out of range", e.name, e.port)
+		if e.Port < 1 || e.Port > 65535 {
+			return fmt.Errorf("%s port %d is out of range", e.name, e.Port)
 		}
-		if !validSecurity(e.sec) {
-			return fmt.Errorf("%s security %q is invalid", e.name, e.sec)
+		if !validSecurity(e.Security) || e.name == "JMAP" && e.Security == SecurityStartTLS {
+			return fmt.Errorf("%s security %q is invalid", e.name, e.Security)
 		}
-		if e.sec == SecurityNone && !isLoopback(e.host) {
+		if !(e.Auth == "" || e.Auth == AuthPassword || e.Auth == AuthOAuth || e.Auth == AuthAPIToken && e.name == "JMAP") {
+			return fmt.Errorf("%s sign-in %q is not supported", e.name, e.Auth)
+		}
+		if e.Path != "" && (e.name != "JMAP" || !strings.HasPrefix(e.Path, "/") || strings.ContainsAny(e.Path, "?# ")) {
+			return fmt.Errorf("%s path %q is invalid", e.name, e.Path)
+		}
+		if e.Security == SecurityNone && !isLoopback(e.Host) {
 			return fmt.Errorf("%s: plaintext connections are only allowed to localhost", e.name)
 		}
 	}
 	return nil
+}
+
+// slotAuth is how slot signs in: AuthPassword when it does not say.
+func slotAuth(slot Server) string {
+	if slot.Auth == "" {
+		return AuthPassword
+	}
+	return slot.Auth
 }
 
 func (in AccountInput) username() string {
@@ -151,7 +186,7 @@ func (s *Service) AddAccount(ctx context.Context, in AccountInput) (Account, err
 	if err := s.KeychainStatus(ctx); err != nil {
 		return Account{}, err
 	}
-	authType, secret := "password", in.Password
+	secret := in.Password
 	var g oauthGrant
 	if in.OAuthFlowID != "" {
 		if g, err = s.flowGrant(in); err != nil {
@@ -159,6 +194,18 @@ func (s *Service) AddAccount(ctx context.Context, in AccountInput) (Account, err
 		}
 		if g.RefreshToken == "" {
 			return Account{}, errors.New("the provider granted no refresh token")
+		}
+	} else if in.Receiving.Auth == AuthOAuth || in.Sending.Auth == AuthOAuth {
+		return Account{}, errors.New("an OAuth sign-in needs an OAuth flow")
+	}
+	recvAuth, sendAuth := slotAuth(in.Receiving), slotAuth(in.Sending)
+	if in.receiving() == auth.JMAP {
+		st, err := s.loadSettings(ctx)
+		if err != nil {
+			return Account{}, err
+		}
+		if !st.ExperimentalJMAP {
+			return Account{}, ErrJMAPOff
 		}
 	}
 	checked, checkErr := s.check(ctx, in, "")
@@ -171,7 +218,8 @@ func (s *Service) AddAccount(ctx context.Context, in AccountInput) (Account, err
 		if _, ok := s.takeGrant(in.OAuthFlowID); !ok {
 			return Account{}, ErrUnknownFlow
 		}
-		authType, secret, in.Username, in.Provider = "oauth", g.RefreshToken, g.Email, g.provider
+		secret, in.Username, in.Provider = g.RefreshToken, g.Email, g.provider
+		recvAuth, sendAuth, in.SendPassword = AuthOAuth, AuthOAuth, ""
 		in.oauthClientID = g.client.ID
 	}
 	if rest, ok := strings.CutPrefix(in.Signature, SignatureHTMLPrefix); ok {
@@ -207,11 +255,11 @@ func (s *Service) AddAccount(ctx context.Context, in AccountInput) (Account, err
 		stmts = append(stmts, sqlite.Statement{SQL: "UPDATE accounts SET is_default = 0"})
 	}
 	stmts = append(stmts, sqlite.Statement{
-		SQL: `INSERT INTO accounts(email, name, alias, is_default, sync_limit, sync_since_months, auth_type, status, username,
-			imap_host, imap_port, imap_security, smtp_host, smtp_port, smtp_security, created_at, provider, oauth_client_id, imap_gmail, receive_only, position)
-			VALUES (?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM accounts))`,
-		Args: []any{in.Email, in.Name, in.Alias, b2i(isDefault), sync.Limit, sync.Months, authType, in.username(),
-			in.IMAPHost, in.IMAPPort, string(in.IMAPSecurity), in.SMTPHost, in.SMTPPort, string(in.SMTPSecurity), time.Now().Unix(), in.Provider, in.oauthClientID, b2i(checked.gmail), b2i(receiveOnly)},
+		SQL: `INSERT INTO accounts(email, name, alias, is_default, sync_limit, sync_since_months, recv_auth, send_auth, status, username,
+			recv_protocol, recv_host, recv_port, recv_security, recv_path, send_protocol, send_host, send_port, send_security, created_at, provider, oauth_client_id, features, receive_only, position)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?, 'smtp', ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM accounts))`,
+		Args: []any{in.Email, in.Name, in.Alias, b2i(isDefault), sync.Limit, sync.Months, recvAuth, sendAuth, in.username(),
+			in.receiving(), in.Receiving.Host, in.Receiving.Port, string(in.Receiving.Security), in.Receiving.Path, in.Sending.Host, in.Sending.Port, string(in.Sending.Security), time.Now().Unix(), in.Provider, in.oauthClientID, encodeFeatures(checked.desc), b2i(receiveOnly)},
 	})
 	res, err := s.db.Transaction(ctx, stmts)
 	if err != nil {
@@ -245,6 +293,14 @@ func (s *Service) AddAccount(ctx context.Context, in AccountInput) (Account, err
 	}
 	if err := keychainSet(s.keyringUser(id), secret); err != nil {
 		return Account{}, fmt.Errorf("save credentials to keychain: %w", undo(err))
+	}
+	if in.SendPassword != "" {
+		if err := keychainSet(s.sendUser(id), in.SendPassword); err != nil {
+			if kerr := s.deleteCredentials(id); kerr != nil {
+				err = errors.Join(err, kerr)
+			}
+			return Account{}, fmt.Errorf("save the sending password to keychain: %w", undo(err))
+		}
 	}
 	if g.client.ID != "" {
 		if err := keychainSet(s.oauthClientUser(id), g.client.Secret); err != nil {
@@ -284,8 +340,8 @@ func (s *Service) AddLocalArchive(ctx context.Context, name string) (Account, er
 	email := "archive-" + strings.ToLower(rand.Text()) + "@local.invalid"
 	acc := "(SELECT id FROM accounts WHERE email = ?)"
 	res, err := s.db.Transaction(ctx, []sqlite.Statement{{
-		SQL: `INSERT INTO accounts(email, name, auth_type, status, username, created_at, provider, imap_gmail, kind, position)
-			VALUES (?, ?, 'none', 'ok', '', ?, 'local', 0, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM accounts))`,
+		SQL: `INSERT INTO accounts(email, name, recv_auth, send_auth, status, username, created_at, provider, features, recv_protocol, send_protocol, kind, position)
+			VALUES (?, ?, 'none', 'none', 'ok', '', ?, 'local', '', '', '', ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM accounts))`,
 		Args: []any{email, name, time.Now().Unix(), KindLocalArchive},
 	},
 		{SQL: "INSERT INTO folders(account_id, name, role, role_since) VALUES (" + acc + ", 'INBOX', 'inbox', unixepoch())", Args: []any{email}},
@@ -332,9 +388,10 @@ func b2i(b bool) int {
 	return 0
 }
 
-const accountCols = `id, email, name, alias, COALESCE((SELECT html FROM signatures WHERE id = signature_id), ''), username, is_default, sync_limit, auth_type, status,
-	imap_host, imap_port, imap_security, smtp_host, smtp_port, smtp_security, smtp_reauth, provider, status_detail,
-	sync_since_months, (SELECT count(*) FROM folders WHERE account_id = accounts.id), signature_id, icon, ai_instructions, oauth_client_id, label_keywords, kind, receive_only`
+const accountCols = `id, email, name, alias, COALESCE((SELECT html FROM signatures WHERE id = signature_id), ''), username, is_default, sync_limit, recv_auth, status,
+	recv_host, recv_port, recv_security, send_host, send_port, send_security, smtp_reauth, provider, status_detail,
+	sync_since_months, (SELECT count(*) FROM folders WHERE account_id = accounts.id), signature_id, icon, ai_instructions, oauth_client_id, label_keywords, kind, receive_only,
+	recv_protocol, send_protocol, features, recv_path, send_auth`
 
 // ErrAccountNotFound is returned for an account id that does not exist.
 var ErrAccountNotFound = errors.New("account not found")
@@ -355,11 +412,14 @@ func scanAccount(r []any) Account {
 		ID: store.Int(r[0]), Email: store.Str(r[1]), Name: store.Str(r[2]), Alias: store.Str(r[3]),
 		Signature: store.Str(r[4]), Username: store.Str(r[5]), IsDefault: store.Int(r[6]) == 1,
 		Sync: SyncRange{Limit: int(store.Int(r[7])), Months: int(store.Int(r[19]))}, Folders: int(store.Int(r[20])), AuthType: store.Str(r[8]), Status: store.Str(r[9]),
-		IMAPHost: store.Str(r[10]), IMAPPort: int(store.Int(r[11])), IMAPSecurity: Security(store.Str(r[12])),
-		SMTPHost: store.Str(r[13]), SMTPPort: int(store.Int(r[14])), SMTPSecurity: Security(store.Str(r[15])),
-		Provider: store.Str(r[17]), StatusDetail: store.Str(r[18]), SignatureID: store.Int(r[21]), Icon: store.Str(r[22]),
+		Receiving: Server{store.Str(r[28]), store.Str(r[10]), int(store.Int(r[11])), Security(store.Str(r[12])), store.Str(r[31]), store.Str(r[8])},
+		Sending:   Server{store.Str(r[29]), store.Str(r[13]), int(store.Int(r[14])), Security(store.Str(r[15])), "", store.Str(r[32])},
+		Provider:  store.Str(r[17]), StatusDetail: store.Str(r[18]), SignatureID: store.Int(r[21]), Icon: store.Str(r[22]),
 		AIInstructions: store.Str(r[23]), OAuthClientID: store.Str(r[24]), LabelKeywords: store.Int(r[25]) == 1, Kind: store.Str(r[26]),
 		ReceiveOnly: store.Int(r[27]) == 1,
+	}
+	if d, ok := decodeFeatures(r[30]); ok {
+		a.Features = d.Features
 	}
 	// SMTP refuses the password: the user is asked for it the same way. status and
 	// status_detail are IMAP's and the keychain's, and they take precedence.
@@ -459,12 +519,25 @@ func (s *Service) ListProviders() []auth.Provider { return auth.ListProviders() 
 
 var errNotPassword = errors.New("the account does not sign in with a password")
 
-// UpdatePassword checks password against the account's servers and, if both
-// accept it, saves it and clears reauth_required and a paused outbox; the worker
-// resumes and the outbox sends in its next round. A failed check is a
+// UpdatePassword checks password (an API token for a receiving slot that signs
+// in with one) against the account's servers and, if both accept it, saves it
+// as the receiving slot's and clears reauth_required and a paused outbox; the
+// worker resumes and the outbox sends in its next round. A sending slot with
+// a password of its own keeps it (UpdateSendPassword). A failed check is a
 // *CheckError and leaves the keychain unchanged; for a receive-only account
 // only IMAP must pass, and a passing SMTP step makes it send again.
 func (s *Service) UpdatePassword(ctx context.Context, id int64, password string) error {
+	return s.updatePassword(ctx, id, password, false)
+}
+
+// UpdateSendPassword is UpdatePassword for the sending slot's own password:
+// the one SMTP signs in with when the receiving slot's secret is another
+// (an API token). The receiving slot keeps its secret.
+func (s *Service) UpdateSendPassword(ctx context.Context, id int64, password string) error {
+	return s.updatePassword(ctx, id, password, true)
+}
+
+func (s *Service) updatePassword(ctx context.Context, id int64, password string, send bool) error {
 	ctx, end, err := s.begin(ctx, id)
 	if err != nil {
 		return err
@@ -474,17 +547,26 @@ func (s *Service) UpdatePassword(ctx context.Context, id int64, password string)
 	if err != nil {
 		return err
 	}
-	if acc.AuthType != "password" {
+	if acc.Kind == KindLocalArchive || acc.Receiving.Auth == AuthOAuth {
 		return errNotPassword
 	}
-	in := serverInput(acc.Email, acc.servers())
-	in.Password = password
+	in, user := serverInput(acc.Email, acc.servers()), s.keyringUser(id)
+	if send { // checked with the receiving slot's stored secret
+		in.Password, _, _, err = s.credentials(ctx, acc, "")
+		in.SendPassword, user = password, s.sendUser(id)
+	} else {
+		in.Password = password
+		in.SendPassword, err = s.sendSecret(ctx, acc)
+	}
+	if err != nil {
+		return err
+	}
 	r, err := s.check(ctx, in, "")
 	if err != nil && !(acc.ReceiveOnly && r.OnlySMTPFailed()) { // a receive-only account needs IMAP only
 		return &CheckError{Report: r, err: err}
 	}
 	// A refusal of the old password still in flight is stale after credentialsUpdated.
-	if err := keychainSet(s.keyringUser(id), password); err != nil {
+	if err := keychainSet(user, password); err != nil {
 		return fmt.Errorf("save credentials to keychain: %w", err)
 	}
 	if acc.ReceiveOnly && err == nil { // SMTP takes the new password: it sends again
@@ -583,13 +665,12 @@ func (s *Service) saveClient(ctx context.Context, id int64, c OAuthClient) error
 }
 
 func (a Account) servers() ServerSettings {
-	return ServerSettings{a.Username, a.IMAPHost, a.IMAPPort, a.IMAPSecurity, a.SMTPHost, a.SMTPPort, a.SMTPSecurity}
+	return ServerSettings{a.Username, a.Receiving, a.Sending}
 }
 
 // serverInput is the AccountInput that checks email's account on ss.
 func serverInput(email string, ss ServerSettings) AccountInput {
-	return AccountInput{Email: email, Username: ss.Username, IMAPHost: ss.IMAPHost, IMAPPort: ss.IMAPPort,
-		IMAPSecurity: ss.IMAPSecurity, SMTPHost: ss.SMTPHost, SMTPPort: ss.SMTPPort, SMTPSecurity: ss.SMTPSecurity}
+	return AccountInput{Email: email, Username: ss.Username, Receiving: ss.Receiving, Sending: ss.Sending}
 }
 
 // UpdateAccount writes p's fields in one transaction. New Servers are first
@@ -667,6 +748,13 @@ func (s *Service) UpdateAccount(ctx context.Context, id int64, p AccountPatch) (
 	}
 	if p.Servers != nil {
 		in := serverInput(acc.Email, *p.Servers)
+		if in.Receiving.Protocol == "" {
+			in.Receiving.Protocol = acc.Receiving.Protocol
+		}
+		if in.Receiving.Protocol != acc.Receiving.Protocol {
+			return Account{}, errors.New("an account's receiving protocol cannot change: add the account again")
+		}
+		in.Receiving.Auth, in.Sending.Auth = acc.Receiving.Auth, acc.Sending.Auth // the sign-in stays
 		r, err := s.checkStored(ctx, acc, &in)
 		var ce *CheckError
 		if err != nil && !errors.As(err, &ce) {
@@ -679,14 +767,15 @@ func (s *Service) UpdateAccount(ctx context.Context, id int64, p AccountPatch) (
 		}
 		set("receive_only", b2i(err != nil))
 		set("username", in.username())
-		set("imap_host", in.IMAPHost)
-		set("imap_gmail", b2i(r.gmail))
-		set("imap_port", in.IMAPPort)
-		set("imap_security", string(in.IMAPSecurity))
-		set("smtp_host", in.SMTPHost)
-		set("smtp_port", in.SMTPPort)
-		set("smtp_security", string(in.SMTPSecurity))
-		s.graphSend.Delete(id) // new servers: the next send tries SMTP before Graph again
+		set("recv_host", in.Receiving.Host)
+		set("features", encodeFeatures(r.desc))
+		set("recv_port", in.Receiving.Port)
+		set("recv_security", string(in.Receiving.Security))
+		set("recv_path", in.Receiving.Path)
+		set("send_host", in.Sending.Host)
+		set("send_port", in.Sending.Port)
+		set("send_security", string(in.Sending.Security))
+		set("send_protocol", auth.SMTP) // new servers: the next send tries SMTP before Graph again
 		// The checked settings work: the user just fixed the sign-in.
 		set("status", "ok")
 		set("status_detail", "")
@@ -703,15 +792,21 @@ func (s *Service) UpdateAccount(ctx context.Context, id int64, p AccountPatch) (
 		stmts = append(stmts, sqlite.Statement{SQL: "UPDATE accounts SET " + strings.Join(cols, ", ") + " WHERE id = ?",
 			Args: append(args, id)})
 	}
-	if p.Servers != nil && (p.Servers.IMAPHost != acc.IMAPHost || p.Servers.IMAPPort != acc.IMAPPort ||
-		serverInput(acc.Email, *p.Servers).username() != acc.Username) {
-		// Another mailbox: its UIDs are not the old one's even where UIDVALIDITY
-		// matches. No real UIDVALIDITY is 0, so pushes of queued ops and downloads
-		// see a recreated folder and the next fetch re-imports every folder.
+	if p.Servers != nil && (p.Servers.Receiving.Host != acc.Receiving.Host || p.Servers.Receiving.Port != acc.Receiving.Port ||
+		p.Servers.Receiving.Path != acc.Receiving.Path || serverInput(acc.Email, *p.Servers).username() != acc.Username) {
+		// Another mailbox: its server locations are not the old one's even where
+		// they read the same. They and the cursors are forgotten, as a
+		// FolderReset of every folder would, so downloads find no location,
+		// queued changes are conflicts and the next round syncs every folder
+		// from the start: a message it finds by identity (Gmail, JMAP) keeps
+		// its row, the rest is gone at the round's end.
 		stmts = append(stmts,
-			sqlite.Statement{SQL: "UPDATE folders SET uidvalidity = 0 WHERE account_id = ?", Args: []any{id}},
-			sqlite.Statement{SQL: "UPDATE message_locations SET uidvalidity = 0 WHERE uid IS NOT NULL AND message_id IN (SELECT id FROM messages WHERE account_id = ?)", Args: []any{id}})
-		unlock, err := s.lockAccount(ctx, id) // no sync or download is using the old UIDs meanwhile
+			sqlite.Statement{SQL: `UPDATE ops SET state = 'conflict', last_error = 'the account moved to another server, so a change queued for the old one was not applied'
+				WHERE account_id = ? AND state IN ('pending', 'awaiting_claim')`, Args: []any{id}},
+			sqlite.Statement{SQL: "UPDATE accounts SET cursor = NULL WHERE id = ?", Args: []any{id}},
+			sqlite.Statement{SQL: "UPDATE folders SET cursor = NULL, synced = 0, filled_since = NULL WHERE account_id = ?", Args: []any{id}},
+			sqlite.Statement{SQL: "DELETE FROM message_locations WHERE message_id IN (SELECT id FROM messages WHERE account_id = ?)", Args: []any{id}})
+		unlock, err := s.lockAccount(ctx, id) // no sync or download is using the old locations meanwhile
 		if err != nil {
 			return Account{}, err
 		}

@@ -1,0 +1,35 @@
+// Package imapbackend is the IMAP protocol backend (ADR 0037): it speaks IMAP,
+// with Gmail's extensions, and hands over change sets.
+//
+// Its 服务器位置 (backend.MessageRef) and folder cursors are UIDVALIDITY:UID,
+// each zero-padded to 10 digits, so the refs of one UIDVALIDITY sort as text
+// by UID. A folder's backend.FolderRef is its name.
+package imapbackend
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+// Encode is the server_ref of UID n under validity, or a folder cursor whose
+// last seen UID is n.
+func Encode(validity, n uint32) string { return fmt.Sprintf("%010d:%010d", validity, n) }
+
+// Decode is Encode's inverse; "" (NULL) and anything malformed decode to 0, 0,
+// as the NULL UIDVALIDITY and last_uid of a folder never synced did.
+func Decode(ref string) (validity, n uint32) {
+	v, u, ok := strings.Cut(ref, ":")
+	if !ok {
+		return 0, 0
+	}
+	vv, err1 := strconv.ParseUint(v, 10, 32)
+	uu, err2 := strconv.ParseUint(u, 10, 32)
+	if err1 != nil || err2 != nil {
+		return 0, 0
+	}
+	return uint32(vv), uint32(uu)
+}
+
+// GmailFeature is the capability of a server with Gmail's IMAP extensions.
+const GmailFeature = "X-GM-EXT-1"

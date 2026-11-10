@@ -2,22 +2,22 @@ package core
 
 import (
 	"context"
+	"errors"
+	"slices"
+	"sync"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
-	"github.com/godwit-email/godwit/core/conn"
+	"github.com/godwit-email/godwit/backend"
+	"github.com/godwit-email/godwit/backend/conn"
 	"github.com/godwit-email/godwit/core/events"
-	"github.com/godwit-email/godwit/core/mailsync"
 	"github.com/godwit-email/godwit/core/store"
 )
 
 // Background sync timing; tests lower the backoff.
 var (
-	idleMax      = 5 * time.Minute // longest IDLE on INBOX before a sync of every folder
-	pollInterval = 5 * time.Minute // wait between syncs when the server lacks IDLE
-	backoffMin   = 2 * time.Second // first wait after a failure, doubled per failure
-	backoffMax   = 5 * time.Minute
+	idleMax    = 5 * time.Minute // longest IDLE on INBOX before a sync of every folder
+	backoffMin = 2 * time.Second // first wait after a failure, doubled per failure
+	backoffMax = 5 * time.Minute
 	// chatterWithin: a server update that ends IDLE sooner than this after it
 	// began is chatter. A run of chatter waits between rounds as failures do, so a
 	// server that keeps reporting changes (or one the sync itself sets off) cannot
@@ -166,11 +166,20 @@ func (s *Service) armWorker(id int64, w *worker) {
 
 func (s *Service) runWorker(ctx context.Context, id int64, wake chan struct{}) {
 	var delay, pace time.Duration
+	var only []backend.FolderRef // what the last server change touched; nil for a full round
+	var fullBy time.Time         // the next full round is due; rounds of only some folders keep it
 	for {
 		if !s.awaitCredentials(ctx, id, wake) {
 			return
 		}
-		chatter, err := s.syncRound(ctx, id, wake)
+		if !time.Now().Before(fullBy) {
+			only = nil
+		}
+		if only == nil {
+			fullBy = time.Now().Add(idleMax)
+		}
+		chatter, changed, err := s.syncRound(ctx, id, wake, only, fullBy)
+		only = changed
 		if ctx.Err() != nil {
 			return
 		}
@@ -233,58 +242,99 @@ func (s *Service) awaitCredentials(ctx context.Context, id int64, wake chan stru
 	}
 }
 
-// syncRound runs SyncNow and then waits for a reason to sync again. With IDLE,
-// INBOX is selected on a second connection before SyncNow, so mail that lands
-// during or after the sync ends the IDLE that follows. chatter reports that a
-// server update ended IDLE within chatterWithin of its start.
-func (s *Service) syncRound(ctx context.Context, id int64, wake chan struct{}) (chatter bool, err error) {
-	updates := make(chan struct{}, 1)
-	notify := func() {
-		select {
-		case updates <- struct{}{}:
-		default:
-		}
-	}
-	c, release, _, err := s.dialAccount(ctx, id, &imapclient.UnilateralDataHandler{
-		Expunge: func(uint32) { notify() },
-		Mailbox: func(d *imapclient.UnilateralDataMailbox) {
-			if d.NumMessages != nil { // FLAGS and PERMANENTFLAGS change no message
-				notify()
-			}
-		},
-		Fetch: func(*imapclient.FetchMessageData) { notify() },
-	})
+// syncRound runs SyncNow, fetching only the folders in only (nil: all), and
+// then waits for a reason to sync again, at the latest until fullBy. A second session Watches the server,
+// started before SyncNow, so a change that lands during or after the sync
+// ends the wait that follows; changed is where it landed, nil for anywhere or
+// when no server change ended the wait. chatter reports that a server change
+// ended the wait within chatterWithin of its start.
+func (s *Service) syncRound(ctx context.Context, id int64, wake chan struct{}, only []backend.FolderRef, fullBy time.Time) (chatter bool, changed []backend.FolderRef, err error) {
+	recv, release, err := s.dialAccount(ctx, id)
 	if err != nil {
-		return false, s.workerFailed(ctx, id, err)
+		return false, nil, s.workerFailed(ctx, id, err)
 	}
-	defer release()
-	idle := c.Caps().Has(imap.CapIdle)
-	if idle {
-		if _, err := c.Select("INBOX", nil).Wait(); err != nil {
-			return false, s.workerFailed(ctx, id, err)
+	updates := make(chan struct{}, 1)
+	watched := make(chan error, 1)
+	var mu sync.Mutex
+	var seen []backend.FolderRef // where Watch said changes landed
+	anywhere := false
+	wctx, stop := context.WithCancel(ctx)
+	go func() {
+		watched <- recv.Watch(wctx, func(fs []backend.FolderRef) {
+			mu.Lock()
+			anywhere = anywhere || len(fs) == 0
+			for _, f := range fs {
+				if !slices.Contains(seen, f) {
+					seen = append(seen, f)
+				}
+			}
+			mu.Unlock()
+			select {
+			case updates <- struct{}{}:
+			default:
+			}
+		})
+	}()
+	// touched is where the changes since the last call landed, nil for anywhere.
+	touched := func() []backend.FolderRef {
+		mu.Lock()
+		defer mu.Unlock()
+		out := seen
+		if anywhere {
+			out = nil
 		}
-	} else {
-		release() // only needed for IDLE; a second release is harmless
+		anywhere, seen = false, nil
+		return out
 	}
-	if err := s.syncNow(ctx, id, false); err != nil {
-		return false, err // syncNow announced it
-	}
-	if idle {
-		start := time.Now()
-		byServer, err := mailsync.Idle(ctx, c, updates, wake, idleMax)
+	defer func() { stop(); release(); <-watched }() // closing unblocks a Watch mid-command
+	// Watch wakes once as it starts watching; one that cannot push returns,
+	// and the account is polled as often as its backend declares.
+	var poll time.Duration
+	select {
+	case <-updates:
+		touched() // the first wake is for what changed before: this round syncs it
+	case err := <-watched:
+		watched <- err
+		if !errors.Is(err, backend.ErrUnsupported) {
+			return false, nil, s.workerFailed(ctx, id, err)
+		}
+		d, err := recv.Describe(ctx)
 		if err != nil {
-			return false, s.workerFailed(ctx, id, err)
+			return false, nil, s.workerFailed(ctx, id, err)
 		}
-		return byServer && time.Since(start) < chatterWithin, nil
+		poll = d.PollInterval // the backend contract holds it above 0
+		release()             // only needed to watch; a second release is harmless
+	case <-ctx.Done():
+		return false, nil, ctx.Err()
 	}
-	t := time.NewTimer(pollInterval)
+	if err := s.syncNow(ctx, id, false, only); err != nil {
+		return false, nil, err // syncNow announced it
+	}
+	if poll == 0 {
+		start := time.Now()
+		t := time.NewTimer(time.Until(fullBy))
+		defer t.Stop()
+		select {
+		case <-updates:
+			return time.Since(start) < chatterWithin, touched(), nil
+		case err := <-watched:
+			watched <- err
+			return false, nil, s.workerFailed(ctx, id, err)
+		case <-wake:
+		case <-t.C:
+		case <-ctx.Done():
+			return false, nil, ctx.Err()
+		}
+		return false, nil, nil
+	}
+	t := time.NewTimer(poll)
 	defer t.Stop()
 	select {
 	case <-t.C:
 	case <-wake:
 	case <-ctx.Done():
 	}
-	return false, nil
+	return false, nil, nil
 }
 
 // workerFailed announces a failure outside SyncNow, unless the worker is stopping.

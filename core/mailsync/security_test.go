@@ -5,8 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/core/mail"
 	"github.com/godwit-email/godwit/core/store"
 	"github.com/stretchr/testify/require"
@@ -22,14 +21,15 @@ func TestAutomaticReceiverAuthenticationImport(t *testing.T) {
 			db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "mail.db"))
 			require.NoError(t, err)
 			defer db.Close()
-			_, err = db.Execute(t.Context(), "INSERT INTO accounts(id,email,imap_host) VALUES (1,'me@customer.test','imap.receiver.test')")
+			_, err = db.Execute(t.Context(), "INSERT INTO accounts(id,email,recv_host) VALUES (1,'me@customer.test','imap.receiver.test')")
 			require.NoError(t, err)
-			_, err = db.Execute(t.Context(), "INSERT INTO folders(id,account_id,name,role,uidvalidity) VALUES (1,1,'INBOX','inbox',1)")
+			_, err = db.Execute(t.Context(), "INSERT INTO folders(id,account_id,name,server_ref,role,cursor) VALUES (1,1,'INBOX','INBOX','inbox','0000000001:0000000000')")
 			require.NoError(t, err)
 			a, err := loadAccount(t.Context(), db, 1)
 			require.NoError(t, err)
-			m := &imapclient.FetchMessageBuffer{UID: 1, Envelope: &imap.Envelope{MessageID: "probe@company.example", Subject: "hello", Date: time.Now(), From: []imap.Address{{Name: "Alice", Mailbox: "alice", Host: "company.example"}}}, BodySection: []imapclient.FetchBodySectionBuffer{{Section: headerSection(), Bytes: []byte(tc.headers + "From: Alice <alice@company.example>\r\nSubject: hello\r\n\r\n")}}}
-			err = importMessage(t.Context(), db, a, &folder{id: 1, name: "INBOX", role: "inbox", uidValidity: 1}, m, nil, 1, true, &result{})
+			m := backend.MessageAppeared{Location: backend.Location{Folder: "INBOX", Ref: "0000000001:0000000001"},
+				Content: &backend.Content{Date: time.Now(), Header: []byte(tc.headers + "From: Alice <alice@company.example>\r\nSubject: hello\r\n\r\n")}}
+			err = importMessage(t.Context(), db, a, &folder{id: 1, ref: "INBOX", name: "INBOX", role: "inbox"}, m, toParsed(m.Content), 1, true, &result{})
 			require.NoError(t, err)
 			rows, err := db.Query(t.Context(), "SELECT security_status,auth_results FROM messages")
 			require.NoError(t, err)
@@ -41,6 +41,6 @@ func TestAutomaticReceiverAuthenticationImport(t *testing.T) {
 }
 
 func TestAutomaticReceiverHostDoesNotProveHeaderOrigin(t *testing.T) {
-	p := toParsed(&imapclient.FetchMessageBuffer{BodySection: []imapclient.FetchBodySectionBuffer{{Section: headerSection(), Bytes: []byte("Authentication-Results: mx.independent-provider.test; none\r\nReceived: from attacker.invalid by mx.independent-provider.test; Thu, 29 Oct 2026 00:00:00 +0000\r\nAuthentication-Results: mx.independent-provider.test; dkim=pass header.d=company.example\r\n\r\n")}}}, nil)
+	p := toParsed(&backend.Content{Header: []byte("Authentication-Results: mx.independent-provider.test; none\r\nReceived: from attacker.invalid by mx.independent-provider.test; Thu, 29 Oct 2026 00:00:00 +0000\r\nAuthentication-Results: mx.independent-provider.test; dkim=pass header.d=company.example\r\n\r\n")})
 	require.NotContains(t, mail.ReceiverAuthenticationResults(p.AuthenticationTrace, "mx.independent-provider.test"), "dkim=pass")
 }

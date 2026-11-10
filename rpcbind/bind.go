@@ -12,10 +12,10 @@ import (
 	"net/mail"
 	"strings"
 
+	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/core"
 	"github.com/godwit-email/godwit/core/ai"
 	"github.com/godwit-email/godwit/core/auth"
-	"github.com/godwit-email/godwit/core/conn"
 	"github.com/godwit-email/godwit/core/plugins"
 	"github.com/godwit-email/godwit/rpc"
 )
@@ -57,6 +57,7 @@ var table = []Error{
 	{Code: "local_archive", Err: core.ErrLocalArchive},
 	{Code: "not_local_archive", Err: core.ErrNotLocalArchive},
 	{Code: "receive_only", Err: core.ErrReceiveOnly},
+	{Code: "jmap_off", Err: core.ErrJMAPOff},
 	{Code: "role_folder", Err: core.ErrRoleFolder},
 	{Code: "folder_not_empty", Err: core.ErrFolderNotEmpty},
 	{Code: "folder_name_empty", Err: core.ErrFolderNameEmpty},
@@ -112,7 +113,7 @@ var table = []Error{
 	{Code: "purge_too_late", Err: core.ErrPurgeTooLate, Key: "mail.purge.too_late"},
 	{Code: "canceled", Err: context.Canceled},
 	{Code: "deadline", Err: context.DeadlineExceeded},
-	{Code: "auth_failed", Err: conn.ErrAuthFailed, Key: "settings.account.detail.auth_rejected"}, // also a failed account check's cause; the account's own words for it
+	{Code: "auth_failed", Err: backend.ErrAuthFailed, Key: "settings.account.detail.auth_rejected"}, // also a failed account check's cause; the account's own words for it
 	{Code: "oauth_not_configured", Err: auth.ErrOAuthNotConfigured},
 	{Code: "flow_expired", Err: auth.ErrFlowExpired},
 	{Code: "invalid_grant", Err: auth.ErrInvalidGrant},
