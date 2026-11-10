@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
@@ -113,7 +114,7 @@ func (e Endpoint) open(ctx context.Context, implicitTLS bool) (net.Conn, context
 // loginErr maps a failure of LOGIN/AUTH to an error without server text: context
 // and network errors are kept, everything else (status replies, malformed or
 // unexpected protocol data, which may echo the password) becomes backend.ErrAuthFailed.
-func loginErr(ctx context.Context, proto string, err error) error {
+func loginErr(ctx context.Context, proto string, e Endpoint, err error) error {
 	var ne net.Error
 	switch {
 	case ctx.Err() != nil:
@@ -124,7 +125,43 @@ func loginErr(ctx context.Context, proto string, err error) error {
 	if se, ok := errors.AsType[*smtp.SMTPError](err); ok && se.EnhancedCode == (smtp.EnhancedCode{5, 7, 139}) {
 		return fmt.Errorf("%s: %w: %w", proto, ErrSMTPAuthDisabled, backend.ErrAuthFailed)
 	}
-	return fmt.Errorf("%s: %w", proto, backend.ErrAuthFailed)
+	return fmt.Errorf("%s: %w", proto, refused(e, err))
+}
+
+// refusal is backend.ErrAuthFailed carrying the server's status reply, with
+// the endpoint's credentials cut out. Its message is ErrAuthFailed's, so the
+// reply reaches only a caller that asks for it (RefusalReply).
+type refusal struct{ reply string }
+
+func (r *refusal) Error() string        { return backend.ErrAuthFailed.Error() }
+func (r *refusal) Is(target error) bool { return target == backend.ErrAuthFailed }
+
+// RefusalReply is the server's reply to a refused login in err (a NO/BAD or an
+// SMTP status, credentials masked), "" when err carries none.
+func RefusalReply(err error) string {
+	if r, ok := errors.AsType[*refusal](err); ok {
+		return r.reply
+	}
+	return ""
+}
+
+// refused is backend.ErrAuthFailed, with the server's status reply in err
+// when it is one: unparsed protocol data, which may echo the password, is not kept.
+func refused(e Endpoint, err error) error {
+	var text string
+	if ie, ok := errors.AsType[*imap.Error](err); ok {
+		text = ie.Error()
+	} else if se, ok := errors.AsType[*smtp.SMTPError](err); ok {
+		text = se.Error()
+	} else {
+		return backend.ErrAuthFailed
+	}
+	for _, secret := range []string{e.Password, e.AccessToken, e.Username} {
+		if secret != "" {
+			text = strings.ReplaceAll(text, secret, "***")
+		}
+	}
+	return &refusal{text}
 }
 
 // connectErr is ctxErr for a failure before login. The reader may already have
@@ -199,7 +236,7 @@ func dialIMAP(ctx context.Context, e Endpoint, h *imapclient.UnilateralDataHandl
 	}
 	if err == nil {
 		if err = imapLogin(c, e); err != nil {
-			err = loginErr(cctx, "imap", err)
+			err = loginErr(cctx, "imap", e, err)
 		} else if c.Caps().Has(imap.CapID) {
 			// Some servers (NetEase) refuse SELECT until the client identifies
 			// itself. A failed ID is not a failed login.
@@ -280,7 +317,7 @@ func dialSMTP(ctx context.Context, e Endpoint) (*smtp.Client, error) {
 	}
 	if err == nil {
 		if err = smtpAuth(c, e); err != nil {
-			err = loginErr(cctx, "smtp", err)
+			err = loginErr(cctx, "smtp", e, err)
 		}
 	} else {
 		err = fmt.Errorf("smtp connect %s: %w", e.addr(), ctxErr(cctx, err))
