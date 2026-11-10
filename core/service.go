@@ -715,6 +715,9 @@ func (s *Service) dialAccount(ctx context.Context, accountID int64) (recv backen
 	return recv, func() { stop(); recv.Close() }, nil
 }
 
+// TracePrefix 标记日志中已脱敏的 IMAP trace 行，供错误报告识别。
+const TracePrefix = conn.TracePrefix
+
 // syncAccount runs one sync, fetching only the folders in only (nil: all). An
 // SMTP login failure skips the outbox but not the rest; it is returned at the
 // end, so a worker round ends and parks.
