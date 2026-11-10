@@ -232,7 +232,7 @@ func (v *labelsView) dialog(c *ui.Context) {
 					kit.Pressable(c.Key("monogram"), kit.PressableOpts{Bare: true, Selected: on, OnClick: func() { v.icon, v.image, v.imagePreview = core.LabelIconMonogram, nil, nil }}).
 						Label(core.LabelIconMonogram).Checked(on).Height(theme.LabelIconCell).Width(theme.LabelIconCell).Radius(t.Radius.Lg).Justify(ui.Center).AlignItems(ui.Center).
 						Children(func() {
-							kit.LabelBadge(c, kit.LabelBadgeOpts{Name: cmpName(v.name), Size: theme.IconLg, Color: t.Label(v.color)})
+							kit.LabelBadge(c, kit.LabelBadgeOpts{Name: cmpName(v.name), Size: theme.IconXl, Color: t.Label(v.color)})
 						})
 					settingButton(c, i18n.T("settings.account.icon.upload"), kit.Outline, false).OnClick(v.pickLabelImage)
 				})
