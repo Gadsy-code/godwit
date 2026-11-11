@@ -166,7 +166,9 @@ func (p *mailPage) sectionHead(c *ui.Context, head ui.Element, order []string, s
 			if below {
 				y += r.H
 			}
-			pt.Fill(ui.Rect{X: r.X, Y: y - 1, W: r.W, H: 2}, accent, 1)
+			// As ui.List draws where dragged rows go: a dot, then the line.
+			pt.Fill(ui.Rect{X: r.X + 4, Y: y - 1, W: r.W - 4, H: 2}, accent, 1)
+			pt.Fill(ui.Rect{X: r.X, Y: y - 4, W: 8, H: 8}, accent, 4)
 		})
 	}
 	if v, ok := ui.Drop[sidebarSection](head); ok {
