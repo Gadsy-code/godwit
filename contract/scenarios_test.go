@@ -218,7 +218,7 @@ func TestSettings(t *testing.T) {
 		before, err := api.GetSettings(ctx)
 		require.NoError(t, err)
 		out["before"] = before
-		st := core.Settings{Theme: "dark", Density: "comfortable", FontSize: 15, BodyFontSize: 17, TintRows: true, RowBar: true,
+		st := core.Settings{Theme: "dark", Density: "comfortable", FontSize: 15, BodyFontSize: 17, TintRows: true, RowBar: true, RowDot: true,
 			SecurityAI: true, RuleAI: true,
 			UILanguage: "en", ReadingLanguage: "de", ReplyLanguage: "reading", NoTranslate: []string{"fr", "es"},
 			LaunchAtLogin: true, KeepInBackground: false, ShowTrayIcon: false, UnreadInMenuBar: true,

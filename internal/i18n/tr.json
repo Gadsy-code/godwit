@@ -1,5 +1,7 @@
 {
   "@@locale": "tr",
+  "settings_labels_dot": "Liste satırlarında nokta",
+  "settings_labels_dot_help": "Her posta listesi satırının ilk satırından önce etiketin renginde küçük bir nokta",
   "settings_labels_bar": "Liste satırlarında çubuk",
   "settings_labels_bar_help": "Her posta listesi satırının sol kenarında etiketin renginde dolu bir çubuk",
   "settings_labels_tint": "Liste satırlarını renklendir",

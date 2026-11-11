@@ -1,5 +1,7 @@
 {
   "@@locale": "vi",
+  "settings_labels_dot": "Chấm ở dòng danh sách",
+  "settings_labels_dot_help": "Một chấm nhỏ có màu nhãn trước dòng đầu tiên của mỗi dòng danh sách",
   "settings_labels_bar": "Thanh ở dòng danh sách",
   "settings_labels_bar_help": "Một thanh đặc có màu nhãn ở mép trái của mỗi dòng danh sách",
   "settings_labels_tint": "Tô màu dòng danh sách",

@@ -1,5 +1,7 @@
 {
   "@@locale": "nl",
+  "settings_labels_dot": "Stip op lijstrijen",
+  "settings_labels_dot_help": "Een kleine stip in de kleur van het label vóór de eerste regel van elke rij van de maillijst",
   "settings_labels_bar": "Balk op lijstrijen",
   "settings_labels_bar_help": "Een egale balk in de kleur van het label aan de linkerrand van elke rij van de maillijst",
   "settings_labels_tint": "Lijstrijen inkleuren",

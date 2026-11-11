@@ -86,3 +86,42 @@ func TestRowTintBar(t *testing.T) {
 	}
 	h.until("a bar of the label's colour on the row's edge", func() bool { h.tt.Frame(); return bar() })
 }
+
+// A row can carry a small dot of its label's colour before its first line (Settings.RowDot): the quiet
+// way, where the bar or the tint is too much.
+func TestRowDot(t *testing.T) {
+	h, _, m := labeledMail(t)
+	h.autoLabel(m.ID, "travel") // blue
+	ls, err := h.env.Svc.ListLabels(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range ls {
+		if l.Slug == "travel" {
+			h.waitMail("the row shows its chip", func() bool { return h.tt.HasText(l.Name) })
+		}
+	}
+	// With the dot on the first line starts a dot's width and gap further in, the dot in that room; the
+	// unread mark is further left than any of it.
+	dotShown := func() bool {
+		rect, ok := h.tt.Find("bob@example.com")
+		if !ok {
+			return false
+		}
+		y := int(rect.Y + rect.H/2)
+		for x := int(rect.X) - 13; x < int(rect.X)-6; x++ {
+			if x < 0 {
+				continue
+			}
+			if px := h.tt.Image().RGBAAt(x, y); int(px.B)-int(px.R) > 90 {
+				return true
+			}
+		}
+		return false
+	}
+	st := h.app.settings
+	st.RowDot = true // the dot alone: no tint, no bar
+	h.post(func() { h.app.changeSettings(st) })
+	h.drain()
+	h.until("a dot of the label's colour before the first line", func() bool { h.tt.Frame(); return dotShown() })
+}

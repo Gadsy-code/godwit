@@ -1,5 +1,7 @@
 {
   "@@locale": "ja",
+  "settings_labels_dot": "一覧の行にドットを表示",
+  "settings_labels_dot_help": "各行の最初の行の前にラベルの色の小さなドットを表示します",
   "settings_labels_bar": "一覧の行にバーを表示",
   "settings_labels_bar_help": "各行の左端にラベルの色のバーを表示します",
   "settings_labels_tint": "一覧の行に色をつける",

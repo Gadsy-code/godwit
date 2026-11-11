@@ -1,5 +1,7 @@
 {
   "@@locale": "fr",
+  "settings_labels_dot": "Pastille sur les lignes de la liste",
+  "settings_labels_dot_help": "Une petite pastille de la couleur du libellé avant la première ligne de chaque ligne de la liste",
   "settings_labels_bar": "Barre sur les lignes de la liste",
   "settings_labels_bar_help": "Une barre pleine de la couleur du libellé au bord gauche de chaque ligne de la liste",
   "settings_labels_tint": "Teinter les lignes de la liste",

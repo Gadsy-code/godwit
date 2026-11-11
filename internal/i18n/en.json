@@ -1,5 +1,7 @@
 {
   "@@locale": "en",
+  "settings_labels_dot": "Dot on list rows",
+  "settings_labels_dot_help": "A small dot of the label’s colour before the first line of each mail list row",
   "settings_labels_bar": "Bar on list rows",
   "settings_labels_bar_help": "A solid bar of the label’s colour on the left edge of each mail list row",
   "settings_labels_tint": "Tint list rows",

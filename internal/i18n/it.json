@@ -1,5 +1,7 @@
 {
   "@@locale": "it",
+  "settings_labels_dot": "Pallino sulle righe della lista",
+  "settings_labels_dot_help": "Un piccolo pallino del colore dell’etichetta prima della prima riga di ogni riga della lista",
   "settings_labels_bar": "Barra sulle righe della lista",
   "settings_labels_bar_help": "Una barra piena del colore dell’etichetta sul bordo sinistro di ogni riga della lista",
   "settings_labels_tint": "Colora le righe della lista",

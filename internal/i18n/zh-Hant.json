@@ -1,5 +1,7 @@
 {
   "@@locale": "zh-Hant",
+  "settings_labels_dot": "列表列圓點",
+  "settings_labels_dot_help": "在每一列的第一行前顯示一個標籤顏色的小圓點",
   "settings_labels_bar": "列表列左側色條",
   "settings_labels_bar_help": "在每一列的左邊緣顯示一條標籤顏色的實心色條",
   "settings_labels_tint": "為列表列著色",

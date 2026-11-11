@@ -213,6 +213,7 @@ const (
 	RingWidth             = 3   // shadcn's focused box ring, outside its border
 	QuoteBar              = 2   // the bar left of a quote in a mail body
 	ImagePlaceholder      = 64  // an image not loaded, when its size is unknown
+	RowDot                = 8   // a list row's dot of its label's colour
 	RowTintBar            = 3   // a tinted list row's bar of its label's colour, on its left edge
 	RowTintAlpha          = 0.3 // a tinted list row: its label's fill, this opaque over the row's own background
 	ReaderMaxWidth        = 720 // the reading pane's text column

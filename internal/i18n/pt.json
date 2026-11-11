@@ -1,5 +1,7 @@
 {
   "@@locale": "pt",
+  "settings_labels_dot": "Ponto nas linhas da lista",
+  "settings_labels_dot_help": "Um pequeno ponto da cor da etiqueta antes da primeira linha de cada linha da lista",
   "settings_labels_bar": "Barra nas linhas da lista",
   "settings_labels_bar_help": "Uma barra sólida da cor da etiqueta na margem esquerda de cada linha da lista",
   "settings_labels_tint": "Colorir as linhas da lista",

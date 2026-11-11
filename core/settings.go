@@ -107,6 +107,8 @@ type Settings struct {
 	TintRows bool
 	// RowBar puts a solid bar of the label's colour on the left edge of each mail list row.
 	RowBar bool
+	// RowDot puts a small dot of the label's colour before the first line of each mail list row.
+	RowDot bool
 	// SidebarWidth is the page sidebars' width in DIPs, the user's drag:
 	// 0 for the default, else 240 to 480.
 	SidebarWidth int

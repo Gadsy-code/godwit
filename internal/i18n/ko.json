@@ -1,5 +1,7 @@
 {
   "@@locale": "ko",
+  "settings_labels_dot": "목록 행에 점 표시",
+  "settings_labels_dot_help": "각 행의 첫 줄 앞에 라벨 색의 작은 점을 표시합니다",
   "settings_labels_bar": "목록 행에 막대 표시",
   "settings_labels_bar_help": "각 행의 왼쪽 가장자리에 라벨 색의 막대를 표시합니다",
   "settings_labels_tint": "목록 행에 색조 적용",

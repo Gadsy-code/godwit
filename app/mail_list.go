@@ -1332,7 +1332,8 @@ func (p *mailPage) row(c *ui.Context, it mailItem) ui.Element {
 		weight = 600
 	}
 	col := ui.Column(c).Gap(th.Space(0.5)).Padding(th.Space(2.5), th.Space(2.5), th.Space(2.5), th.Space(5))
-	if tint, bar, ok := p.a.rowTint(c, it.Labels); ok {
+	tint, bar, tinted := p.a.rowTint(c, it.Labels)
+	if tinted {
 		if p.a.settings.TintRows {
 			col.Background(tint) // translucent, so a chosen row still shows its selection
 		}
@@ -1346,6 +1347,9 @@ func (p *mailPage) row(c *ui.Context, it mailItem) ui.Element {
 				Label(i18n.Tf("mail.row.unread", it.Unread))
 		}
 		ui.Row(c).Gap(th.Space(1.5)).AlignItems(ui.Center).Children(func() {
+			if tinted && p.a.settings.RowDot {
+				ui.Box(c).Size(theme.RowDot, theme.RowDot).Shrink(0).Radius(t.Radius.Full).Background(bar)
+			}
 			ui.Text(c, it.Who).FontWeight(weight).SingleLine().Shrink(1)
 			if it.Thread && it.Count > 1 { // how many messages the conversation holds, as the reader's header says
 				ui.Badge(c, strconv.Itoa(it.Count)).Label(i18n.Tf("reader.thread_count", it.Count))
