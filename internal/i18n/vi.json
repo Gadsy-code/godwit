@@ -1,5 +1,7 @@
 {
   "@@locale": "vi",
+  "settings_labels_tint": "Tô màu dòng danh sách",
+  "settings_labels_tint_help": "Tô nhẹ từng dòng của danh sách bằng màu nhãn của nó",
   "wit_tool_create_skill": "Tạo Skill",
   "wit_skill_name": "Mã định danh",
   "wit_skill_display_name": "Tên hiển thị",

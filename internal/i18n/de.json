@@ -1,5 +1,7 @@
 {
   "@@locale": "de",
+  "settings_labels_tint": "Listenzeilen einfärben",
+  "settings_labels_tint_help": "Jede Zeile der Mailliste leicht in der Farbe ihres Labels färben",
   "wit_tool_create_skill": "Skill erstellen",
   "wit_skill_name": "Kennung",
   "wit_skill_display_name": "Anzeigename",

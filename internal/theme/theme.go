@@ -213,6 +213,7 @@ const (
 	RingWidth             = 3   // shadcn's focused box ring, outside its border
 	QuoteBar              = 2   // the bar left of a quote in a mail body
 	ImagePlaceholder      = 64  // an image not loaded, when its size is unknown
+	RowTintAlpha          = 0.2 // a tinted list row: its label's fill, this opaque over the row's own background
 	ReaderMaxWidth        = 720 // the reading pane's text column
 	AttachmentWidth       = 282 // an attachment in the reading pane, with its download button
 	DraftAttachmentWidth  = 286 // an attachment in the drafts pane

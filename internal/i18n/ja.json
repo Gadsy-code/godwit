@@ -1,5 +1,7 @@
 {
   "@@locale": "ja",
+  "settings_labels_tint": "一覧の行に色をつける",
+  "settings_labels_tint_help": "各行をラベルの色でうっすら染めます",
   "wit_tool_create_skill": "Skill を作成",
   "wit_skill_name": "識別子",
   "wit_skill_display_name": "表示名",

@@ -68,6 +68,9 @@ func (v *labelsView) view(c *ui.Context, p *settingsPage) {
 				settingSelect(c, i18n.T("settings.labels.display.style"), &display, opts)
 				p.st.LabelDisplay = display
 			})
+		},
+		func() {
+			kit.SwitchRow(c, &p.st.TintRows, i18n.T("settings.labels.tint"), i18n.T("settings.labels.tint.help"))
 		})
 	settingsSection(c, i18n.T("settings.labels.auto"), "",
 		func() {

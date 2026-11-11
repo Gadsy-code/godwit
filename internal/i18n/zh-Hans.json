@@ -1,5 +1,7 @@
 {
   "@@locale": "zh-Hans",
+  "settings_labels_tint": "给列表行着色",
+  "settings_labels_tint_help": "用标签的颜色为每一行轻轻着色",
   "wit_tool_create_skill": "创建 Skill",
   "wit_skill_name": "标识符",
   "wit_skill_display_name": "显示名称",
