@@ -1447,7 +1447,7 @@ func (r *reader) historyToggle(c *ui.Context, n, history int) {
 			}
 		}
 	}}).
-		FillWidth().MaxWidth(theme.ReaderMaxWidth).AlignSelf(ui.Center).Gap(th.Space(2.5)).Padding(th.Space(1.5), 0).Justify(ui.Center)
+		FillWidth().MaxWidth(r.p.a.readerMaxWidth()).AlignSelf(ui.Center).Gap(th.Space(2.5)).Padding(th.Space(1.5), 0).Justify(ui.Center)
 	b.Children(func() {
 		ui.Icon(c, icons.Get("chevron-down")).Size(theme.IconSm, theme.IconSm).TextColor(t.Muted).Rotate(rot)
 		kit.Text(c, label, t.Text.Sm).FontWeight(500).TextColor(t.Foreground)
@@ -1898,7 +1898,7 @@ func (r *reader) imagesNote(c *ui.Context, m core.MessageSummary, b *msgBody, ad
 // body: the subject, its tags and labels, the sender, the AI's parts and
 // what follows the body, never wider than ReaderMaxWidth.
 func (r *reader) column(c *ui.Context) ui.Element {
-	return ui.Column(c).FillWidth().MaxWidth(theme.ReaderMaxWidth).AlignSelf(ui.Center)
+	return ui.Column(c).FillWidth().MaxWidth(r.p.a.readerMaxWidth()).AlignSelf(ui.Center)
 }
 
 // attachments lists the files attached: a click opens one, Save as copies it;

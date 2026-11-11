@@ -128,13 +128,14 @@ func labelSubmenu(m *ui.Menu, t theme.Tokens, labels []core.Label, state func(id
 }
 
 // labelNav is the sidebar's foldable label group: the labels on some mail.
-func (p *mailPage) labelNav(c *ui.Context) {
+// It returns the header, none while no label is on mail (sectionShown).
+func (p *mailPage) labelNav(c *ui.Context) ui.Element {
 	a := p.a
 	t, th := theme.Of(c), c.Theme()
-	if !slices.ContainsFunc(a.labels, func(l core.Label) bool { return l.Count > 0 }) {
-		return
+	if !p.sectionShown("labels") {
+		return ui.Element{}
 	}
-	kit.SidebarCollapsible(c, &p.labelsOpen, true, func() {
+	head := kit.SidebarCollapsible(c, &p.labelsOpen, true, func() {
 		ui.Text(c, i18n.T("mail.labels")).SingleLine().Grow(1).Shrink(1)
 	}, func() {
 		for _, l := range a.labels {
@@ -159,6 +160,15 @@ func (p *mailPage) labelNav(c *ui.Context) {
 		}
 	})
 	ui.Box(c).Height(th.Space(2))
+	return head
+}
+
+// labelsMenu is the labels header's own menu item: make a label, in Settings › Labels.
+func (p *mailPage) labelsMenu(m *ui.Menu) {
+	if m.Item(i18n.T("settings.labels.new")).Icon(menuIcon("plus")).Chosen() {
+		p.a.navigate(Route{Page: PageSettings, Settings: "labels"})
+		p.a.pages[PageSettings].(*settingsPage).labels.open(core.Label{Color: "gray", Icon: "folder-3"})
+	}
 }
 
 // goneLabel reports a route to the view of a label that no longer exists.

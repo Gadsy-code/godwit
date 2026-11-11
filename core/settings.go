@@ -112,6 +112,15 @@ type Settings struct {
 	// LabelDisplay is how label chips show: LabelDisplayBoth (the default;
 	// "" too), LabelDisplayIcon or LabelDisplayText.
 	LabelDisplay string
+	// SidebarOrder is the mail sidebar's sections, top to bottom, as a comma-separated
+	// permutation of SidebarSections ("" is the default, views, labels, accounts).
+	SidebarOrder string
+	// ListRowOrder is what leads a mail list row: ListRowSender (the default; "" too)
+	// puts who it is with first, ListRowSubject the subject.
+	ListRowOrder string
+	// ReaderWidth is how wide the reading column may grow: ReaderWidthNormal (the
+	// default; "" too), ReaderWidthWide or ReaderWidthFull.
+	ReaderWidth string
 	// SidebarWidth is the page sidebars' width in DIPs, the user's drag:
 	// 0 for the default, else 240 to 480.
 	SidebarWidth int
@@ -177,6 +186,38 @@ const (
 	LabelDisplayText = "text"
 )
 
+// SidebarSections are the mail sidebar's movable sections, in the default order.
+var SidebarSections = []string{"views", "labels", "accounts"}
+
+// SidebarOrder is st's sidebar sections in the order the user chose, or the
+// default one when none was, or the choice is not a permutation of SidebarSections.
+func SidebarOrder(st Settings) []string {
+	if order, ok := parseSidebarOrder(st.SidebarOrder); ok && st.SidebarOrder != "" {
+		return order
+	}
+	return slices.Clone(SidebarSections)
+}
+
+func parseSidebarOrder(s string) ([]string, bool) {
+	order := strings.Split(s, ",")
+	sorted := slices.Sorted(slices.Values(order))
+	want := slices.Sorted(slices.Values(SidebarSections))
+	return order, slices.Equal(sorted, want)
+}
+
+// What leads a list row (Settings.ListRowOrder).
+const (
+	ListRowSender  = "sender"
+	ListRowSubject = "subject"
+)
+
+// How wide the reading column may grow (Settings.ReaderWidth).
+const (
+	ReaderWidthNormal = "normal"
+	ReaderWidthWide   = "wide"
+	ReaderWidthFull   = "full"
+)
+
 // MinThreadCollapse and MaxThreadCollapse bound ThreadCollapseThreshold.
 const (
 	MinThreadCollapse     = 2
@@ -231,6 +272,12 @@ func (st Settings) validate(kept []mask.Rule) error {
 		return fmt.Errorf("invalid reply language mode %q", st.ReplyLanguage)
 	case !in(st.LabelDisplay, "", LabelDisplayBoth, LabelDisplayIcon, LabelDisplayText):
 		return fmt.Errorf("invalid label display %q", st.LabelDisplay)
+	case st.SidebarOrder != "" && !validSidebarOrder(st.SidebarOrder):
+		return fmt.Errorf("invalid sidebar order %q", st.SidebarOrder)
+	case !in(st.ListRowOrder, "", ListRowSender, ListRowSubject):
+		return fmt.Errorf("invalid list row order %q", st.ListRowOrder)
+	case !in(st.ReaderWidth, "", ReaderWidthNormal, ReaderWidthWide, ReaderWidthFull):
+		return fmt.Errorf("invalid reader width %q", st.ReaderWidth)
 	case st.FontSize < 10 || st.FontSize > 32, st.BodyFontSize != 0 && (st.BodyFontSize < 10 || st.BodyFontSize > 32):
 		return fmt.Errorf("font size must be between 10 and 32")
 	case st.SidebarWidth != 0 && (st.SidebarWidth < 240 || st.SidebarWidth > 480):
@@ -594,4 +641,9 @@ func (s *Service) ImagesAllowed(ctx context.Context, message int64) (bool, error
 		return slices.Contains(trusted, strings.ToLower(a.Address)), err
 	}
 	return false, nil
+}
+
+func validSidebarOrder(s string) bool {
+	_, ok := parseSidebarOrder(s)
+	return ok
 }

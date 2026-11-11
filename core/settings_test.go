@@ -269,3 +269,33 @@ func TestSettingsTypeMismatchErrors(t *testing.T) {
 	_, err = s.GetSettings(t.Context())
 	assert.ErrorContains(t, err, "stored settings")
 }
+
+// Layout choices: where the sidebar puts its sections, what leads a list row, how
+// wide the reading column may grow. Empty is upstream's way of each.
+func TestSettingsLayout(t *testing.T) {
+	s := settingsService(t, t.TempDir(), "")
+	st, err := s.GetSettings(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"views", "labels", "accounts"}, SidebarOrder(st), "the default order")
+
+	st.SidebarOrder, st.ListRowOrder, st.ReaderWidth = "accounts,labels,views", ListRowSubject, ReaderWidthWide
+	got, err := s.SetSettings(t.Context(), st)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"accounts", "labels", "views"}, SidebarOrder(got))
+	assert.Equal(t, ListRowSubject, got.ListRowOrder)
+	assert.Equal(t, ReaderWidthWide, got.ReaderWidth)
+
+	for name, mod := range map[string]func(*Settings){
+		"a section missing":  func(x *Settings) { x.SidebarOrder = "accounts,labels" },
+		"a section twice":    func(x *Settings) { x.SidebarOrder = "accounts,accounts,views" },
+		"an unknown section": func(x *Settings) { x.SidebarOrder = "accounts,labels,folders" },
+		"list rows":          func(x *Settings) { x.ListRowOrder = "date" },
+		"reader width":       func(x *Settings) { x.ReaderWidth = "huge" },
+	} {
+		in := got
+		mod(&in)
+		_, err := s.SetSettings(t.Context(), in)
+		assert.Error(t, err, name)
+	}
+	assert.Equal(t, []string{"views", "labels", "accounts"}, SidebarOrder(Settings{SidebarOrder: "garbage"}), "an unusable value falls back to the default")
+}

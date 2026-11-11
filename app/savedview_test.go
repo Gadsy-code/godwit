@@ -37,7 +37,7 @@ func (h *harness) groupOf(subject string) string {
 	return ""
 }
 
-// TestViewCreateFromSidebar: the add button opens the editor, the preview
+// TestViewCreateFromSidebar: the views header's 新建视图 opens the editor, the preview
 // follows the conditions, and 创建 shows the view with its mail grouped.
 func TestViewCreateFromSidebar(t *testing.T) {
 	h, accs := mailHarness(t, nil, "alice@example.com")
@@ -46,7 +46,7 @@ func TestViewCreateFromSidebar(t *testing.T) {
 	h.put(accs[0], "INBOX", coretest.Msg("ben@other.example", "alice@example.com", "unrelated", "z"))
 	h.syncNow(accs[0])
 
-	h.click(i18n.T("view.new"))
+	h.headerMenu(i18n.T("view.title"), i18n.T("view.new"))
 	h.see(i18n.T("view.problem.name"))
 	if !h.tt.HasText(i18n.T("view.editor.create")) {
 		t.Fatal("no create button")
