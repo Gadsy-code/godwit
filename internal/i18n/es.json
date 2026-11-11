@@ -1,7 +1,7 @@
 {
   "@@locale": "es",
-  "settings_sidebar_order": "Orden de la barra lateral",
-  "settings_sidebar_order_help": "El orden de Vistas, Etiquetas y Cuentas en la barra lateral",
+  "mail_section_up": "Subir",
+  "mail_section_down": "Bajar",
   "settings_list_order": "Filas de la lista de correo",
   "settings_list_order_help": "Qué encabeza cada fila de la lista de correo",
   "settings_list_order_sender": "Primero el remitente",

@@ -1,7 +1,7 @@
 {
   "@@locale": "it",
-  "settings_sidebar_order": "Ordine della barra laterale",
-  "settings_sidebar_order_help": "Ordine di viste, etichette e account nella barra laterale",
+  "mail_section_up": "Sposta su",
+  "mail_section_down": "Sposta giù",
   "settings_list_order": "Righe della lista mail",
   "settings_list_order_help": "Cosa apre ogni riga della lista",
   "settings_list_order_sender": "Mittente per primo",

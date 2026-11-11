@@ -1,7 +1,7 @@
 {
   "@@locale": "zh-Hans",
-  "settings_sidebar_order": "侧边栏顺序",
-  "settings_sidebar_order_help": "侧边栏中视图、标签和账户的排列顺序",
+  "mail_section_up": "上移",
+  "mail_section_down": "下移",
   "settings_list_order": "邮件列表的行",
   "settings_list_order_help": "列表每一行以什么开头",
   "settings_list_order_sender": "发件人在前",

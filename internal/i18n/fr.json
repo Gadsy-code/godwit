@@ -1,7 +1,7 @@
 {
   "@@locale": "fr",
-  "settings_sidebar_order": "Ordre de la barre latérale",
-  "settings_sidebar_order_help": "Ordre des vues, libellés et comptes dans la barre latérale",
+  "mail_section_up": "Monter",
+  "mail_section_down": "Descendre",
   "settings_list_order": "Lignes de la liste des mails",
   "settings_list_order_help": "Ce qui ouvre chaque ligne de la liste",
   "settings_list_order_sender": "Expéditeur en premier",

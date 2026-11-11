@@ -1,7 +1,7 @@
 {
   "@@locale": "vi",
-  "settings_sidebar_order": "Thứ tự thanh bên",
-  "settings_sidebar_order_help": "Thứ tự của Chế độ xem, Nhãn và Tài khoản trong thanh bên",
+  "mail_section_up": "Lên",
+  "mail_section_down": "Xuống",
   "settings_list_order": "Các dòng của danh sách thư",
   "settings_list_order_help": "Mục đứng đầu mỗi dòng của danh sách",
   "settings_list_order_sender": "Người gửi trước",

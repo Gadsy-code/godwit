@@ -1,7 +1,7 @@
 {
   "@@locale": "zh-Hant",
-  "settings_sidebar_order": "側邊欄順序",
-  "settings_sidebar_order_help": "側邊欄中檢視、標籤與帳戶的排列順序",
+  "mail_section_up": "上移",
+  "mail_section_down": "下移",
   "settings_list_order": "郵件列表的列",
   "settings_list_order_help": "列表每一列以什麼開頭",
   "settings_list_order_sender": "寄件者在前",

@@ -1,7 +1,7 @@
 {
   "@@locale": "tr",
-  "settings_sidebar_order": "Kenar çubuğu sırası",
-  "settings_sidebar_order_help": "Kenar çubuğunda görünümlerin, etiketlerin ve hesapların sırası",
+  "mail_section_up": "Yukarı taşı",
+  "mail_section_down": "Aşağı taşı",
   "settings_list_order": "Posta listesi satırları",
   "settings_list_order_help": "Listenin her satırında ilk gelen",
   "settings_list_order_sender": "Önce gönderen",

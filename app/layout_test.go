@@ -63,11 +63,11 @@ func TestReaderMaxWidth(t *testing.T) {
 	h.until("the widest column", func() bool { return h.app.readerMaxWidth() > wide })
 }
 
-// The three layout choices are in Settings › General, and choosing one changes the settings.
+// The list row and reading width choices are in Settings › General, and choosing one changes the settings.
 func TestLayoutSettingsPage(t *testing.T) {
 	h, _ := withAccount(t)
 	p := h.openSettings("general")
-	for _, key := range []string{"settings.sidebar_order", "settings.list_order", "settings.reader_width"} {
+	for _, key := range []string{"settings.list_order", "settings.reader_width"} {
 		h.see(i18n.T(key))
 	}
 	p.st.ReaderWidth = core.ReaderWidthWide
@@ -78,34 +78,47 @@ func TestLayoutSettingsPage(t *testing.T) {
 	}
 }
 
-// The sidebar sections are dragged into order, and the mail sidebar follows.
-func TestSidebarOrderDrag(t *testing.T) {
+// A sidebar section's header dragged onto another's takes its place; the
+// fixed rows above stay.
+func TestSidebarSectionDrag(t *testing.T) {
 	h, _ := mailHarness(t, nil, "alice@example.com")
-	h.openSettings("general")
 	views, accounts := i18n.T("view.title"), i18n.T("mail.accounts")
-	menu := views + " › " + i18n.T("mail.labels")
-	if h.tt.HasText(menu) {
-		t.Fatalf("the order menu is still there")
-	}
-	row, ok := h.tt.Find(views)
-	if !ok {
-		t.Fatalf("no %q row; texts %q", views, h.tt.Texts())
-	}
-	x, y := row.X+row.W/2, row.Y+row.H/2
+	h.top(views)
+	from, _ := h.tt.Find(accounts)
+	to, _ := h.tt.Find(views)
+	x, y := from.X+from.W/2, from.Y+from.H/2
 	h.tt.Move(x, y)
 	h.tt.Press(x, y)
-	h.tt.Move(x, y+20)
-	h.tt.Move(x, y+110)
-	h.tt.Release(x, y+110)
-	h.drain()
-	h.until("the sections reordered", func() bool {
-		return h.app.settings.SidebarOrder == "labels,accounts,views"
-	})
-	h.app.navigate(Route{Page: PageMail})
-	h.drain()
+	h.tt.Move(x, y-10)
+	h.tt.Move(x, to.Y+to.H/2)
 	h.tt.Frame()
+	h.tt.Release(x, to.Y+to.H/2)
+	h.until("the accounts first", func() bool { return h.app.settings.SidebarOrder == "accounts,views,labels" })
 	h.until("the accounts above the views", func() bool { return h.top(accounts) < h.top(views) })
-	if h.top(i18n.T("mail.compose")) > h.top(accounts) {
-		t.Fatal("compose moved below the accounts")
+	if h.top(i18n.T("mail.compose")) > h.top(accounts) || h.top(i18n.T("mail.unified.starred")) > h.top(accounts) {
+		t.Fatal("a fixed row moved below the sections")
 	}
+}
+
+// A section's header menu moves it past the shown section below, skipping
+// labels while none is on mail, and back up.
+func TestSidebarSectionMenu(t *testing.T) {
+	h, _ := mailHarness(t, nil, "alice@example.com")
+	views, accounts := i18n.T("view.title"), i18n.T("mail.accounts")
+	h.top(views)
+	if err := h.tt.RightClick(views); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.tt.ChooseMenuItem(i18n.T("mail.section.down")); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the views under the accounts", func() bool { return h.app.settings.SidebarOrder == "labels,accounts,views" })
+	h.until("the views drawn under", func() bool { return h.top(accounts) < h.top(views) })
+	if err := h.tt.RightClick(views); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.tt.ChooseMenuItem(i18n.T("mail.section.up")); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the views back on top", func() bool { return h.app.settings.SidebarOrder == "labels,views,accounts" })
 }

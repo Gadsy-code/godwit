@@ -256,10 +256,10 @@ func (p *mailPage) viewEmpty(c *ui.Context) {
 }
 
 // viewNav is the sidebar's 视图: an add button, and each view with its
-// icon, name, unread count and menu.
-func (p *mailPage) viewNav(c *ui.Context) {
+// icon, name, unread count and menu. It returns the header.
+func (p *mailPage) viewNav(c *ui.Context) ui.Element {
 	t, th := theme.Of(c), c.Theme()
-	kit.SidebarCollapsible(c, &p.viewsOpen, true, func() {
+	head := kit.SidebarCollapsible(c, &p.viewsOpen, true, func() {
 		ui.Text(c, i18n.T("view.title")).SingleLine().Grow(1).Shrink(1)
 		kit.IconButton(c, "plus", i18n.T("view.new"), kit.ButtonOpts{Variant: kit.Ghost, Size: kit.SizeSm}).
 			Size(th.Space(5), th.Space(5)).TextColor(t.Muted).OnClick(func() { p.openViewEditor(newViewEditor(p)) })
@@ -269,6 +269,7 @@ func (p *mailPage) viewNav(c *ui.Context) {
 		}
 	})
 	ui.Box(c).Height(th.Space(2))
+	return head
 }
 
 func (p *mailPage) viewRow(c *ui.Context, b core.SavedView) {

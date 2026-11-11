@@ -1,7 +1,7 @@
 {
   "@@locale": "de",
-  "settings_sidebar_order": "Reihenfolge der Seitenleiste",
-  "settings_sidebar_order_help": "Reihenfolge von Ansichten, Labels und Konten in der Seitenleiste",
+  "mail_section_up": "Nach oben",
+  "mail_section_down": "Nach unten",
   "settings_list_order": "Zeilen der Mailliste",
   "settings_list_order_help": "Was jede Zeile der Mailliste anführt",
   "settings_list_order_sender": "Absender zuerst",

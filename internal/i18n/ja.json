@@ -1,7 +1,7 @@
 {
   "@@locale": "ja",
-  "settings_sidebar_order": "サイドバーの順序",
-  "settings_sidebar_order_help": "サイドバーでのビュー、ラベル、アカウントの並び順",
+  "mail_section_up": "上へ",
+  "mail_section_down": "下へ",
   "settings_list_order": "メール一覧の行",
   "settings_list_order_help": "一覧の各行の先頭に表示するもの",
   "settings_list_order_sender": "送信者を先に",

@@ -1,7 +1,7 @@
 {
   "@@locale": "en",
-  "settings_sidebar_order": "Sidebar order",
-  "settings_sidebar_order_help": "The order of Views, Labels and Accounts in the sidebar",
+  "mail_section_up": "Move up",
+  "mail_section_down": "Move down",
   "settings_list_order": "Mail list rows",
   "settings_list_order_help": "What leads each row of the mail list",
   "settings_list_order_sender": "Sender first",

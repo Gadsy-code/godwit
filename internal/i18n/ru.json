@@ -1,7 +1,7 @@
 {
   "@@locale": "ru",
-  "settings_sidebar_order": "Порядок боковой панели",
-  "settings_sidebar_order_help": "Порядок представлений, меток и учётных записей в боковой панели",
+  "mail_section_up": "Выше",
+  "mail_section_down": "Ниже",
   "settings_list_order": "Строки списка писем",
   "settings_list_order_help": "Что стоит первым в каждой строке списка",
   "settings_list_order_sender": "Сначала отправитель",

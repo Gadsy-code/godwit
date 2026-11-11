@@ -1,7 +1,7 @@
 {
   "@@locale": "nl",
-  "settings_sidebar_order": "Volgorde van de zijbalk",
-  "settings_sidebar_order_help": "De volgorde van weergaven, labels en accounts in de zijbalk",
+  "mail_section_up": "Omhoog",
+  "mail_section_down": "Omlaag",
   "settings_list_order": "Rijen van de maillijst",
   "settings_list_order_help": "Wat elke rij van de lijst aanvoert",
   "settings_list_order_sender": "Afzender eerst",
