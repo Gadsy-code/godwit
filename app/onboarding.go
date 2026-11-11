@@ -89,6 +89,7 @@ type onboarding struct {
 	confirmed            map[string][]string // per lowercased email address: hosts outside its domain the user let Autodiscover send the password to
 	jmapAuth             int                 // how JMAP signs in: 0 a password, 1 an API token
 	flowID, authURL      string
+	oauthWaiting         bool
 	oauthErr             error
 	report               core.CheckReport
 	checking, adding     bool
@@ -136,6 +137,7 @@ func (o *onboarding) leave() {
 		o.cancelFlow(o.flowID)
 		o.flowID, o.authURL = "", ""
 	}
+	o.oauthWaiting = false
 }
 
 func (o *onboarding) cancelFlow(id string) {
@@ -324,6 +326,9 @@ func (o *onboarding) choose(p auth.Provider) {
 	}
 	if p.ID != o.prov.ID { // what was typed or imported is for the provider it was given to
 		o.secret, o.client = "", clientForm{}
+		if o.proto == auth.Graph {
+			o.proto = ""
+		}
 	}
 	o.prov, o.tab = p, 0
 	o.setServers(p)
@@ -332,6 +337,11 @@ func (o *onboarding) choose(p auth.Provider) {
 	o.askEmail = !validEmail(o.email)
 	o.focusEmail = false
 	if loginOf(p) == "oauth" {
+		if o.canGraph(p) {
+			o.oauthErr = nil
+			o.goTo(stepOAuth)
+			return
+		}
 		o.startOAuth()
 		return
 	}
@@ -346,7 +356,7 @@ func (o *onboarding) choose(p auth.Provider) {
 // sign-in goes on to the check.
 func (o *onboarding) startOAuth() {
 	o.leave()
-	o.step, o.oauthErr = stepOAuth, nil
+	o.step, o.oauthWaiting, o.oauthErr = stepOAuth, true, nil
 	gen, a := o.gen, o.a
 	oauth, plat, prov, hint := a.oauth, a.plat, o.prov.ID, strings.TrimSpace(o.email)
 	var client core.OAuthClient
@@ -411,7 +421,17 @@ func (o *onboarding) pop3() bool { return o.proto == auth.POP3 && !o.oauth() }
 // ews: the account is added over EWS, its servers form says.
 func (o *onboarding) ews() bool { return o.proto == auth.EWS && !o.oauth() }
 
-// recvStep is the check's receiving step: imap, jmap, pop3 or ews.
+// canGraph: ExperimentalGraph is on and p offers Microsoft Graph (Outlook).
+func (o *onboarding) canGraph(p auth.Provider) bool {
+	return o.a.settings.ExperimentalGraph && p.Entry(auth.Graph).Protocol == auth.Graph
+}
+
+// graph: the account is added over Microsoft Graph.
+func (o *onboarding) graph() bool {
+	return o.proto == auth.Graph && o.prov.Entry(auth.Graph).Protocol == auth.Graph
+}
+
+// recvStep is the check's receiving step: imap, jmap, pop3, ews or graph.
 func (o *onboarding) recvStep() string {
 	switch {
 	case o.jmap():
@@ -420,19 +440,21 @@ func (o *onboarding) recvStep() string {
 		return auth.EWS
 	case o.pop3():
 		return auth.POP3
+	case o.graph():
+		return auth.Graph
 	}
 	return auth.IMAP
 }
 
 // checkSteps are the check's steps before it reports: a JMAP account sends
-// through its session (jmap_send), and an EWS one through the server it
-// receives from, so it has no sending step.
+// through its session (jmap_send), and an EWS or Graph one through the server
+// it receives from, so it has no sending step.
 func (o *onboarding) checkSteps() []core.CheckStep {
 	steps := []core.CheckStep{{Name: "settings"}, {Name: o.recvStep()}, {Name: "smtp"}}
 	switch {
 	case o.jmap():
 		steps[2].Name = "jmap_send"
-	case o.ews():
+	case o.ews(), o.graph():
 		return steps[:2]
 	}
 	return steps
@@ -499,6 +521,11 @@ func (o *onboarding) input() core.AccountInput {
 	if o.pop3() {
 		in.Receiving.Protocol = auth.POP3
 	}
+	if o.graph() {
+		g := o.prov.Entry(auth.Graph)
+		in.Receiving = core.Server{Protocol: auth.Graph, Host: g.Host, Port: g.Port, Security: g.Security}
+		in.Sending = in.Receiving
+	}
 	if o.oauth() {
 		in.OAuthFlowID = o.flowID
 	} else {
@@ -507,7 +534,7 @@ func (o *onboarding) input() core.AccountInput {
 	if o.apiToken() {
 		in.Receiving.Auth, in.Sending.Auth = core.AuthAPIToken, core.AuthAPIToken
 	}
-	if testSecurity != "" && !o.ews() && !o.jmap() { // a JMAP or EWS URL says its own
+	if testSecurity != "" && !o.ews() && !o.jmap() && (!o.graph() || sysproxy.OnThisComputer(in.Receiving.Host)) { // a JMAP or EWS URL says its own
 		in.Receiving.Security, in.Sending.Security = testSecurity, testSecurity
 	}
 	return in
@@ -1143,6 +1170,20 @@ func (o *onboarding) oauthView(c *ui.Context) {
 		sub = i18n.T("onboarding.oauth.sub")
 	}
 	o.providerHeader(c, sub)
+	if o.canGraph(o.prov) || o.graph() {
+		protos := []string{"", auth.Graph}
+		ui.Field(c, i18n.T("onboarding.protocol"), func() {
+			sel := max(slices.Index(protos, o.proto), 0)
+			kit.TabsFill(c, &sel, "IMAP", i18n.T("onboarding.protocol.graph"))
+			if protos[sel] != o.proto {
+				o.proto = protos[sel]
+			}
+		}).FontSize(t.Text.Sm).TextColor(t.Muted)
+		if !o.oauthWaiting && o.oauthErr == nil {
+			primary(c, i18n.T("onboarding.own_client.signin"), false).OnClick(o.startOAuth)
+			return
+		}
+	}
 	ui.Column(c).Gap(th.Space(3)).Padding(th.Space(5)).Radius(t.Radius.Xl).Border(theme.Hairline, t.Border).BorderStyle(ui.BorderDashed).AlignItems(ui.Center).Children(func() {
 		if o.oauthErr != nil {
 			kit.Alert(c, kit.Danger, humanize(o.oauthErr), func() {
@@ -1185,12 +1226,16 @@ func (o *onboarding) checkRow(st core.CheckStep) (text, detail string, status in
 				s, _ := ewsServer(cmp.Or(strings.TrimSpace(o.ewsURL), o.report.URL))
 				host, sendHost = s.Host, s.Host
 			}
+			if o.graph() {
+				g := o.prov.Entry(auth.Graph)
+				host, sendHost = g.Host, g.Host
+			}
 			detail = i18n.Tf("onboarding.check.settings."+src, host, sendHost)
 		}
 		if st.Name == auth.IMAP {
 			detail = o.foldersText()
 		}
-		if st.Name == auth.JMAP || st.Name == auth.EWS { // where the credentials went, which discovery may have moved
+		if st.Name == auth.JMAP || st.Name == auth.EWS || st.Name == auth.Graph { // where the credentials went, which discovery may have moved
 			detail = i18n.Tf(k+".host", o.report.Host)
 			if f := o.foldersText(); f != "" {
 				detail += " · " + f
