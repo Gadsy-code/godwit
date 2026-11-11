@@ -27,7 +27,7 @@ func mailHarness(t *testing.T, opts []coretest.Option, emails ...string) (*harne
 			accs = append(accs, e.AddAccount(t, em))
 		}
 	})
-	h.until("the mail page", func() bool { return h.app.loaded && h.app.route.Page == PageMail })
+	h.until("the mail page", func() bool { return h.app.loaded && h.app.route.Page == PageMail && !h.app.mail.loading })
 	return h, accs
 }
 
@@ -992,14 +992,14 @@ func TestThreadItemSender(t *testing.T) {
 }
 
 func TestThreadMenuBlocksCorrespondentAfterOwnReply(t *testing.T) {
-	h, accs := mailHarness(t, nil, "alice@example.com")
+	h, accs := mailHarness(t, []coretest.Option{coretest.WithoutAutoSync()}, "alice@example.com")
 	acc := accs[0]
 	h.put(acc, "INBOX", coretest.Msg("bob@example.com", acc.Email, "Plan", "question",
 		coretest.MessageID("a@x"), at(h.clock.Now(), 1)))
 	h.put(acc, "Sent", coretest.Msg(acc.Email, "bob@example.com", "Re: Plan", "answer",
 		coretest.InReplyTo("a@x"), at(h.clock.Now(), 2)))
 	h.syncNow(acc)
-	h.waitMail("one conversation", func() bool { return len(h.items()) == 1 })
+	h.waitMail("one conversation", func() bool { return len(h.items()) == 1 && h.tt.HasText("Plan") })
 	if err := h.tt.RightClick("Plan"); err != nil {
 		t.Fatal(err)
 	}
@@ -1038,7 +1038,9 @@ func TestSearchDropsStaleResults(t *testing.T) {
 	h.put(accs[0], "INBOX", coretest.Msg("bob@example.com", "alice@example.com", "Invoice March", "pay"))
 	h.put(accs[0], "INBOX", coretest.Msg("bob@example.com", "alice@example.com", "Lunch Plans", "eat"))
 	h.syncNow(accs[0])
-	h.waitMail("two threads", func() bool { return len(h.items()) == 2 })
+	h.waitMail("two threads", func() bool {
+		return len(h.items()) == 2 && h.app.accountsGen == h.app.loadGen && !h.app.mail.loading
+	})
 	h.settle() // nothing else is posted from here on
 	p := h.app.mail
 	openListSearch(h)
