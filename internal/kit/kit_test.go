@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1526,5 +1527,25 @@ func TestRadioCardClicks(t *testing.T) {
 	tt.Frame()
 	if !bg {
 		t.Fatal("a click on the help did not choose the card")
+	}
+}
+
+// An unread count in a coloured circle: amber up to 9, red from 10, so a glance tells how much is waiting.
+func TestKitCountBadge(t *testing.T) {
+	top := func(n int) color.RGBA {
+		tt := ui.NewTester(themed(func(c *ui.Context) {
+			ui.Column(c).Padding(8).Children(func() { CountBadge(c, n) })
+		}), 100, 100)
+		r, ok := tt.Find(strconv.Itoa(n))
+		if !ok {
+			t.Fatalf("badge %d not found", n)
+		}
+		return tt.Image().RGBAAt(int(r.X+r.W/2), int(r.Y)+2) // the circle's top edge, above any digit
+	}
+	if px := top(3); px.R < 200 || px.G < 110 || px.B > 90 {
+		t.Errorf("3 is %v, want amber", px)
+	}
+	if px := top(12); px.R < 180 || px.G > 90 || px.B > 90 {
+		t.Errorf("12 is %v, want red", px)
 	}
 }

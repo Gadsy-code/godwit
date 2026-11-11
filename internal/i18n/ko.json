@@ -1,5 +1,7 @@
 {
   "@@locale": "ko",
+  "settings_unread_badges": "색상이 있는 읽지 않음 숫자",
+  "settings_unread_badges_help": "사이드바의 읽지 않음 숫자를 색 원 안에 표시합니다. 9개까지는 호박색, 10개부터는 빨간색입니다",
   "wit_tool_create_skill": "Skill 만들기",
   "wit_skill_name": "식별자",
   "wit_skill_display_name": "표시 이름",

@@ -1,5 +1,7 @@
 {
   "@@locale": "tr",
+  "settings_unread_badges": "Renkli okunmamış sayaçları",
+  "settings_unread_badges_help": "Kenar çubuğundaki sayaçlar renkli dairelerde görünür: 9’a kadar kehribar, 10’dan itibaren kırmızı",
   "wit_tool_create_skill": "Skill oluştur",
   "wit_skill_name": "Tanımlayıcı",
   "wit_skill_display_name": "Görünen ad",

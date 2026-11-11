@@ -2,6 +2,7 @@ package kit
 
 import (
 	"hash/fnv"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -15,6 +16,21 @@ import (
 // it would reach texts of other sizes.
 func Text(c *ui.Context, s string, size float32) ui.Element {
 	return ui.Text(c, s).FontSize(size).LineHeight(theme.Of(c).Text.Line(size))
+}
+
+// CountBadge is an unread count in a coloured circle (a pill past one digit): amber up to 9, red from 10,
+// the count in white on it. It is a number a glance can weigh.
+func CountBadge(c *ui.Context, n int) ui.Element {
+	t, th := theme.Of(c), c.Theme()
+	fill := t.Attention
+	if n > 9 {
+		fill = t.Danger
+	}
+	size := th.Space(4.5)
+	text := strconv.Itoa(n)
+	return ui.Box(c).MinWidth(size).Height(size).PaddingX(th.Space(1)).Radius(t.Radius.Full).Background(fill).Center().Shrink(0).Label(text).Children(func() {
+		Text(c, text, t.Text.Xs).FontWeight(600).TextColor(t.OnSolid)
+	})
 }
 
 // Badge is a small gray label.

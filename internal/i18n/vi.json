@@ -1,5 +1,7 @@
 {
   "@@locale": "vi",
+  "settings_unread_badges": "Số thư chưa đọc có màu",
+  "settings_unread_badges_help": "Số thư chưa đọc ở thanh bên nằm trong vòng tròn màu: hổ phách đến 9, đỏ từ 10",
   "wit_tool_create_skill": "Tạo Skill",
   "wit_skill_name": "Mã định danh",
   "wit_skill_display_name": "Tên hiển thị",

@@ -293,6 +293,7 @@ func (p *settingsPage) generalView(c *ui.Context) {
 	settingsSection(c, i18n.T("settings.mail"), "",
 		sw(&st.ThreadView, i18n.T("settings.thread_view"), i18n.T("settings.thread_view.help")),
 		sw(&st.ThreadCollapse, i18n.T("settings.thread_collapse"), i18n.T("settings.thread_collapse.help")),
+		sw(&st.UnreadBadges, i18n.T("settings.unread_badges"), i18n.T("settings.unread_badges.help")),
 		func() {
 			if !st.ThreadCollapse {
 				return

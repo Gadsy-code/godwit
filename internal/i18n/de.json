@@ -1,5 +1,7 @@
 {
   "@@locale": "de",
+  "settings_unread_badges": "Farbige Ungelesen-Zähler",
+  "settings_unread_badges_help": "Die Zähler in der Seitenleiste stehen in farbigen Kreisen: bernsteinfarben bis 9, rot ab 10",
   "wit_tool_create_skill": "Skill erstellen",
   "wit_skill_name": "Kennung",
   "wit_skill_display_name": "Anzeigename",

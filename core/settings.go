@@ -103,6 +103,9 @@ type Settings struct {
 	// LabelDisplay is how label chips show: LabelDisplayBoth (the default;
 	// "" too), LabelDisplayIcon or LabelDisplayText.
 	LabelDisplay string
+	// UnreadBadges draws the unread counts in the mail sidebar in coloured circles: amber up
+	// to 9, red from 10. Off, they are small muted numbers.
+	UnreadBadges bool
 	// SidebarWidth is the page sidebars' width in DIPs, the user's drag:
 	// 0 for the default, else 240 to 480.
 	SidebarWidth int

@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"slices"
-	"strconv"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/godwit-email/godwit/core"
@@ -148,7 +147,7 @@ func (p *mailPage) labelNav(c *ui.Context) {
 				ui.Icon(c, icons.Get("label-"+l.Icon)).Size(theme.Icon, theme.Icon).TextColor(t.Label(l.Color).Text)
 				ui.Text(c, l.Name).SingleLine().Grow(1).Shrink(1)
 				if l.Unread > 0 {
-					kit.Text(c, strconv.Itoa(l.Unread), t.Text.Sm).TextColor(t.Muted)
+					a.unreadMark(c, l.Unread)
 				}
 			})
 			item.ContextMenu(func(m *ui.Menu) {

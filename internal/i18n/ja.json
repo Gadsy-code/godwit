@@ -1,5 +1,7 @@
 {
   "@@locale": "ja",
+  "settings_unread_badges": "未読数を色付きで表示",
+  "settings_unread_badges_help": "サイドバーの未読数を色付きの円で表示します。9件まではアンバー、10件以上は赤です",
   "wit_tool_create_skill": "Skill を作成",
   "wit_skill_name": "識別子",
   "wit_skill_display_name": "表示名",

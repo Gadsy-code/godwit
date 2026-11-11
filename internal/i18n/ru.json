@@ -1,5 +1,7 @@
 {
   "@@locale": "ru",
+  "settings_unread_badges": "Цветные счётчики непрочитанных",
+  "settings_unread_badges_help": "Счётчики в боковой панели показываются в цветных кружках: янтарные до 9, красные от 10",
   "wit_tool_create_skill": "Создать Skill",
   "wit_skill_name": "Идентификатор",
   "wit_skill_display_name": "Отображаемое имя",

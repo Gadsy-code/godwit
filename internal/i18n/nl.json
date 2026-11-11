@@ -1,5 +1,7 @@
 {
   "@@locale": "nl",
+  "settings_unread_badges": "Gekleurde ongelezen-tellers",
+  "settings_unread_badges_help": "De tellers in de zijbalk staan in gekleurde cirkels: amber tot 9, rood vanaf 10",
   "wit_tool_create_skill": "Skill maken",
   "wit_skill_name": "Identificatie",
   "wit_skill_display_name": "Weergavenaam",

@@ -1,5 +1,7 @@
 {
   "@@locale": "zh-Hant",
+  "settings_unread_badges": "未讀數顯示顏色",
+  "settings_unread_badges_help": "側邊欄的未讀數顯示在彩色圓圈裡：9 以內為琥珀色，10 起為紅色",
   "wit_tool_create_skill": "建立 Skill",
   "wit_skill_name": "識別碼",
   "wit_skill_display_name": "顯示名稱",

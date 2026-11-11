@@ -1,5 +1,7 @@
 {
   "@@locale": "it",
+  "settings_unread_badges": "Numeri dei non letti colorati",
+  "settings_unread_badges_help": "I numeri della barra laterale stanno in cerchi colorati: ambra fino a 9, rosso da 10",
   "wit_tool_create_skill": "Crea uno Skill",
   "wit_skill_name": "Identificatore",
   "wit_skill_display_name": "Nome visualizzato",

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -155,14 +154,13 @@ func (p *mailPage) Sidebar(c *ui.Context) {
 
 // navItem is a view in the sidebar, with its icon and count.
 func (p *mailPage) navItem(c *ui.Context, icon, label string, v core.View, count int) {
-	t := theme.Of(c)
 	on := p.viewShown(v)
 	item := kit.SidebarItem(c, kit.SidebarItemOpts{Selected: on, Covered: p.viewEdit != nil, OnClick: func() { p.a.navigate(Route{Page: PageMail, View: v}) }})
 	item.Children(func() {
 		kit.SidebarIcon(c, item, icon, on)
 		ui.Text(c, label).SingleLine().Grow(1).Shrink(1)
 		if count > 0 {
-			kit.Text(c, strconv.Itoa(count), t.Text.Sm).TextColor(t.Muted)
+			p.a.unreadMark(c, count)
 		}
 	})
 	if v.Unified == "inbox" || v.Unified == "starred" {
@@ -195,7 +193,7 @@ func (p *mailPage) account(c *ui.Context, acc core.Account) {
 		p.a.accountMark(c, acc) // as in the settings sidebar
 		ui.Text(c, name).SingleLine().Grow(1).Shrink(1).TextColor(t.Foreground)
 		if n := p.a.unread[acc.ID]; n > 0 {
-			kit.Text(c, strconv.Itoa(n), t.Text.Sm).TextColor(t.Muted)
+			p.a.unreadMark(c, n)
 		}
 	}, func() {
 		hide := "" // the subtree of a folded folder
@@ -241,7 +239,6 @@ type folderKey struct {
 // folds it, and folded it counts the unread under it too. Junk and Trash show
 // no count.
 func (p *mailPage) folderRow(c *ui.Context, f sideFolder, open *bool) {
-	t := theme.Of(c)
 	v := core.View{FolderID: f.ID}
 	if f.Role == "drafts" && f.ID == 0 {
 		v = localDrafts(f.AccountID)
@@ -265,7 +262,7 @@ func (p *mailPage) folderRow(c *ui.Context, f sideFolder, open *bool) {
 			n = f.sum
 		}
 		if n > 0 && f.Role != "junk" && f.Role != "trash" {
-			kit.Text(c, strconv.Itoa(n), t.Text.Sm).TextColor(t.Muted)
+			p.a.unreadMark(c, n)
 		}
 		if f.kids {
 			ch, label := kit.SidebarChevron(c, 0), "mail.folder.expand"
@@ -357,7 +354,7 @@ func (p *mailPage) accountLabelsNav(c *ui.Context, accID int64) {
 		ui.Icon(c, icons.Get("tag")).Size(theme.Icon, theme.Icon).Shrink(0).TextColor(t.Muted)
 		ui.Text(c, i18n.T("mail.labels")).SingleLine().Grow(1).Shrink(1)
 		if !*open && totalUnread > 0 {
-			kit.Text(c, strconv.Itoa(totalUnread), t.Text.Sm).TextColor(t.Muted)
+			p.a.unreadMark(c, totalUnread)
 		}
 	}, func() {
 		for _, l := range labels {
@@ -371,7 +368,7 @@ func (p *mailPage) accountLabelsNav(c *ui.Context, accID int64) {
 				ui.Icon(c, icons.Get("label-"+l.Icon)).Size(theme.Icon, theme.Icon).TextColor(t.Label(l.Color).Text)
 				ui.Text(c, l.Name).SingleLine().Grow(1).Shrink(1)
 				if l.Unread > 0 {
-					kit.Text(c, strconv.Itoa(l.Unread), t.Text.Sm).TextColor(t.Muted)
+					p.a.unreadMark(c, l.Unread)
 				}
 			})
 		}

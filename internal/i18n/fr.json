@@ -1,5 +1,7 @@
 {
   "@@locale": "fr",
+  "settings_unread_badges": "Compteurs de non lus en couleur",
+  "settings_unread_badges_help": "Les compteurs de la barre latérale sont dans des cercles colorés : ambre jusqu’à 9, rouge à partir de 10",
   "wit_tool_create_skill": "Créer un Skill",
   "wit_skill_name": "Identifiant",
   "wit_skill_display_name": "Nom affiché",

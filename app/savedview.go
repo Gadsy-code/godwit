@@ -280,7 +280,7 @@ func (p *mailPage) viewRow(c *ui.Context, b core.SavedView) {
 		ui.Icon(c, icons.Get(labelIcon(b.Icon))).Size(theme.Icon, theme.Icon).Shrink(0).TextColor(t.Muted)
 		ui.Text(c, b.Name).SingleLine().Grow(1).Shrink(1)
 		if b.Unread > 0 {
-			kit.Text(c, strconv.Itoa(b.Unread), t.Text.Sm).TextColor(t.Muted)
+			p.a.unreadMark(c, b.Unread)
 		}
 	})
 	item.ContextMenu(func(m *ui.Menu) { p.savedViewMenu(m, b) })

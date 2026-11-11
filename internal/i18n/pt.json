@@ -1,5 +1,7 @@
 {
   "@@locale": "pt",
+  "settings_unread_badges": "Contagens de não lidas a cores",
+  "settings_unread_badges_help": "As contagens na barra lateral ficam em círculos coloridos: âmbar até 9, vermelho a partir de 10",
   "wit_tool_create_skill": "Criar um Skill",
   "wit_skill_name": "Identificador",
   "wit_skill_display_name": "Nome de exibição",

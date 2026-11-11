@@ -1,5 +1,7 @@
 {
   "@@locale": "es",
+  "settings_unread_badges": "Contadores de no leídos en color",
+  "settings_unread_badges_help": "Los contadores de la barra lateral van en círculos de color: ámbar hasta 9, rojo desde 10",
   "wit_tool_create_skill": "Crear un Skill",
   "wit_skill_name": "Identificador",
   "wit_skill_display_name": "Nombre para mostrar",
