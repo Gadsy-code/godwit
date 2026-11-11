@@ -98,7 +98,10 @@ type mailPage struct {
 
 	main   listSel // the list's choice and place
 	found  listSel // the search results', apart: they are other rows
-	filter int     // 0 all, 1 unread
+	filter int     // filterAll, filterUnread, filterStarred or filterAttach
+
+	quickLabel int64 // a label the list is narrowed to, or 0
+	labelOpen  bool  // its menu
 
 	folders                  map[int64][]core.Folder // by account
 	outbox                   []outboxEntry           // every account's
@@ -454,10 +457,10 @@ func (p *mailPage) shown() []mailItem {
 	switch {
 	case p.searched:
 		return p.results
-	case p.filter == 0 || p.savedViewID() != 0: // a view says what it is about in its groups
+	case !p.filtered() || p.savedViewID() != 0: // a view says what it is about in its groups
 		return p.items
 	}
-	return slices.DeleteFunc(slices.Clone(p.items), func(it mailItem) bool { return it.Unread == 0 })
+	return slices.DeleteFunc(slices.Clone(p.items), func(it mailItem) bool { return !p.keeps(it) })
 }
 
 // open shows rows[i] in the reader. Choosing a row is not navigation: the
@@ -755,7 +758,7 @@ func (p *mailPage) listHeader(c *ui.Context, head string) {
 	ui.Row(c).AlignItems(ui.Center).Padding(th.Space(3), th.Space(4), th.Space(2), th.Space(4)).Gap(th.Space(2)).Children(func() {
 		kit.Text(c, head, t.Text.Base).FontWeight(500).TextColor(t.Muted)
 		ui.Spacer(c)
-		if !saved {
+		if !saved && !p.a.settings.QuickFilters {
 			kit.Tabs(c, &p.filter, i18n.T("mail.filter.all"), i18n.T("mail.filter.unread"))
 		}
 		if p.a.sidebarHidden { // else the sidebar's header has it
@@ -763,6 +766,9 @@ func (p *mailPage) listHeader(c *ui.Context, head string) {
 				OnClick(p.a.openPalette)
 		}
 	})
+	if !saved && p.a.settings.QuickFilters {
+		p.quickFilters(c)
+	}
 }
 
 // searchHint is the line under the search box: what was found, in which
@@ -1074,7 +1080,7 @@ func (p *mailPage) olderFolder() int64 {
 // again) or the server has nothing older.
 func (p *mailPage) loadOlder() {
 	f, o := p.olderFolder(), &p.older
-	if f == 0 || p.loading || p.stalled || p.cursor != "" || p.searched || p.filter != 0 || o.busy || o.err != nil || o.done[f] || o.notYet == f {
+	if f == 0 || p.loading || p.stalled || p.cursor != "" || p.searched || p.filtered() || o.busy || o.err != nil || o.done[f] || o.notYet == f {
 		return
 	}
 	a := p.a

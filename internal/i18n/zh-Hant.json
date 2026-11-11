@@ -1,5 +1,9 @@
 {
   "@@locale": "zh-Hant",
+  "settings_quick_filters": "列表上方的快速篩選",
+  "settings_quick_filters_help": "在「全部」「未讀」旁顯示星號、含附件與依標籤的篩選",
+  "mail_filter_starred": "星號",
+  "mail_filter_attach": "附件",
   "wit_tool_create_skill": "建立 Skill",
   "wit_skill_name": "識別碼",
   "wit_skill_display_name": "顯示名稱",

@@ -1,5 +1,9 @@
 {
   "@@locale": "de",
+  "settings_quick_filters": "Schnellfilter über der Liste",
+  "settings_quick_filters_help": "Markiert, Mit Anhang und je Label neben Alle und Ungelesen",
+  "mail_filter_starred": "Markiert",
+  "mail_filter_attach": "Anhänge",
   "wit_tool_create_skill": "Skill erstellen",
   "wit_skill_name": "Kennung",
   "wit_skill_display_name": "Anzeigename",

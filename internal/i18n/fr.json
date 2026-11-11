@@ -1,5 +1,9 @@
 {
   "@@locale": "fr",
+  "settings_quick_filters": "Filtres rapides au-dessus de la liste",
+  "settings_quick_filters_help": "Suivis, Avec pièce jointe et par étiquette près de Tous et Non lus",
+  "mail_filter_starred": "Suivis",
+  "mail_filter_attach": "Pièces jointes",
   "wit_tool_create_skill": "Créer un Skill",
   "wit_skill_name": "Identifiant",
   "wit_skill_display_name": "Nom affiché",

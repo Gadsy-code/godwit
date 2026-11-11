@@ -1,5 +1,9 @@
 {
   "@@locale": "ko",
+  "settings_quick_filters": "목록 위 빠른 필터",
+  "settings_quick_filters_help": "전체·읽지 않음 옆에 별표, 첨부 파일, 라벨별 필터를 표시합니다",
+  "mail_filter_starred": "별표",
+  "mail_filter_attach": "첨부",
   "wit_tool_create_skill": "Skill 만들기",
   "wit_skill_name": "식별자",
   "wit_skill_display_name": "표시 이름",

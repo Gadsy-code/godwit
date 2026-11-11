@@ -1,5 +1,9 @@
 {
   "@@locale": "nl",
+  "settings_quick_filters": "Snelfilters boven de lijst",
+  "settings_quick_filters_help": "Met ster, Met bijlage en per label naast Alles en Ongelezen",
+  "mail_filter_starred": "Met ster",
+  "mail_filter_attach": "Bijlagen",
   "wit_tool_create_skill": "Skill maken",
   "wit_skill_name": "Identificatie",
   "wit_skill_display_name": "Weergavenaam",

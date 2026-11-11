@@ -1,5 +1,9 @@
 {
   "@@locale": "it",
+  "settings_quick_filters": "Filtri rapidi sopra la lista",
+  "settings_quick_filters_help": "Con stella, Con allegato e per etichetta accanto a Tutti e Non letti",
+  "mail_filter_starred": "Con stella",
+  "mail_filter_attach": "Allegati",
   "wit_tool_create_skill": "Crea uno Skill",
   "wit_skill_name": "Identificatore",
   "wit_skill_display_name": "Nome visualizzato",

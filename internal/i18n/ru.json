@@ -1,5 +1,9 @@
 {
   "@@locale": "ru",
+  "settings_quick_filters": "Быстрые фильтры над списком",
+  "settings_quick_filters_help": "Помеченные, С вложением и по метке рядом с «Все» и «Непрочитанные»",
+  "mail_filter_starred": "С флажком",
+  "mail_filter_attach": "Вложения",
   "wit_tool_create_skill": "Создать Skill",
   "wit_skill_name": "Идентификатор",
   "wit_skill_display_name": "Отображаемое имя",

@@ -1,5 +1,9 @@
 {
   "@@locale": "vi",
+  "settings_quick_filters": "Bộ lọc nhanh phía trên danh sách",
+  "settings_quick_filters_help": "Gắn sao, Có tệp đính kèm và theo nhãn cạnh Tất cả và Chưa đọc",
+  "mail_filter_starred": "Gắn sao",
+  "mail_filter_attach": "Tệp đính kèm",
   "wit_tool_create_skill": "Tạo Skill",
   "wit_skill_name": "Mã định danh",
   "wit_skill_display_name": "Tên hiển thị",

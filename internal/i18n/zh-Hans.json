@@ -1,5 +1,9 @@
 {
   "@@locale": "zh-Hans",
+  "settings_quick_filters": "列表上方的快捷筛选",
+  "settings_quick_filters_help": "在“全部”“未读”旁显示星标、带附件和按标签的筛选",
+  "mail_filter_starred": "星标",
+  "mail_filter_attach": "附件",
   "wit_tool_create_skill": "创建 Skill",
   "wit_skill_name": "标识符",
   "wit_skill_display_name": "显示名称",

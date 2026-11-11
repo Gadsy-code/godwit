@@ -1,5 +1,9 @@
 {
   "@@locale": "ja",
+  "settings_quick_filters": "リストの上のクイックフィルター",
+  "settings_quick_filters_help": "「すべて」「未読」の横に、スター付き・添付あり・ラベル別のフィルターを表示します",
+  "mail_filter_starred": "スター付き",
+  "mail_filter_attach": "添付あり",
   "wit_tool_create_skill": "Skill を作成",
   "wit_skill_name": "識別子",
   "wit_skill_display_name": "表示名",

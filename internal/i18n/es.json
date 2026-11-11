@@ -1,5 +1,9 @@
 {
   "@@locale": "es",
+  "settings_quick_filters": "Filtros rápidos sobre la lista",
+  "settings_quick_filters_help": "Destacados, Con adjunto y por etiqueta junto a Todos y No leídos",
+  "mail_filter_starred": "Destacados",
+  "mail_filter_attach": "Adjuntos",
   "wit_tool_create_skill": "Crear un Skill",
   "wit_skill_name": "Identificador",
   "wit_skill_display_name": "Nombre para mostrar",

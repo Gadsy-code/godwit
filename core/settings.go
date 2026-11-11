@@ -35,6 +35,7 @@ type Settings struct {
 	NotifyNewMail, NotifyPreview      bool
 	QuickReplies, Summary, ThreadView bool
 	ThreadCollapse                    bool // collapse runs of folded messages into an expandable card
+	QuickFilters                      bool // the mail list shows Starred, Attachment and label filters beside All and Unread
 	ThreadCollapseThreshold           int  // a longer thread keeps its newest this many messages in sight and collapses the older; MinThreadCollapse to MaxThreadCollapse
 	DefaultModel, SmallModel          string
 	// Translator is the reader's translation channel: "" the model, or

@@ -1,5 +1,9 @@
 {
   "@@locale": "pt",
+  "settings_quick_filters": "Filtros rápidos acima da lista",
+  "settings_quick_filters_help": "Com estrela, Com anexo e por etiqueta ao lado de Todas e Não lidas",
+  "mail_filter_starred": "Com estrela",
+  "mail_filter_attach": "Anexos",
   "wit_tool_create_skill": "Criar um Skill",
   "wit_skill_name": "Identificador",
   "wit_skill_display_name": "Nome de exibição",

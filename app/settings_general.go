@@ -292,6 +292,7 @@ func (p *settingsPage) generalView(c *ui.Context) {
 		sw(&st.NotifyPreview, i18n.T("settings.notify_preview"), i18n.T("settings.notify_preview.help")))
 	settingsSection(c, i18n.T("settings.mail"), "",
 		sw(&st.ThreadView, i18n.T("settings.thread_view"), i18n.T("settings.thread_view.help")),
+		sw(&st.QuickFilters, i18n.T("settings.quick_filters"), i18n.T("settings.quick_filters.help")),
 		sw(&st.ThreadCollapse, i18n.T("settings.thread_collapse"), i18n.T("settings.thread_collapse.help")),
 		func() {
 			if !st.ThreadCollapse {

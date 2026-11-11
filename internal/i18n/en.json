@@ -1,5 +1,9 @@
 {
   "@@locale": "en",
+  "settings_quick_filters": "Quick filters above the list",
+  "settings_quick_filters_help": "Starred, With attachment and per-label filters next to All and Unread",
+  "mail_filter_starred": "Starred",
+  "mail_filter_attach": "Attachments",
   "wit_tool_create_skill": "Create a Skill",
   "wit_skill_name": "Identifier",
   "wit_skill_display_name": "Display name",
