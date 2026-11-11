@@ -103,6 +103,9 @@ type Settings struct {
 	// LabelDisplay is how label chips show: LabelDisplayBoth (the default;
 	// "" too), LabelDisplayIcon or LabelDisplayText.
 	LabelDisplay string
+	// AccountOpensInbox makes a click on an account in the mail sidebar open its inbox
+	// as well as unfold it, so one click gets there.
+	AccountOpensInbox bool
 	// SidebarWidth is the page sidebars' width in DIPs, the user's drag:
 	// 0 for the default, else 240 to 480.
 	SidebarWidth int

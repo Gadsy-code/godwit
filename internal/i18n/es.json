@@ -1,5 +1,7 @@
 {
   "@@locale": "es",
+  "settings_account_opens_inbox": "Abrir la bandeja al hacer clic en una cuenta",
+  "settings_account_opens_inbox_help": "Un clic en una cuenta de la barra lateral muestra su bandeja de entrada y la despliega",
   "wit_tool_create_skill": "Crear un Skill",
   "wit_skill_name": "Identificador",
   "wit_skill_display_name": "Nombre para mostrar",

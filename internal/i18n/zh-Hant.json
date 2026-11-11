@@ -1,5 +1,7 @@
 {
   "@@locale": "zh-Hant",
+  "settings_account_opens_inbox": "點擊帳戶時直接開啟收件匣",
+  "settings_account_opens_inbox_help": "在側邊欄點擊帳戶，會在展開它的同時直接顯示它的收件匣",
   "wit_tool_create_skill": "建立 Skill",
   "wit_skill_name": "識別碼",
   "wit_skill_display_name": "顯示名稱",

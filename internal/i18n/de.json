@@ -1,5 +1,7 @@
 {
   "@@locale": "de",
+  "settings_account_opens_inbox": "Beim Klick auf ein Konto den Posteingang öffnen",
+  "settings_account_opens_inbox_help": "Ein Klick auf ein Konto in der Seitenleiste zeigt sofort dessen Posteingang und klappt es auf",
   "wit_tool_create_skill": "Skill erstellen",
   "wit_skill_name": "Kennung",
   "wit_skill_display_name": "Anzeigename",

@@ -1,5 +1,7 @@
 {
   "@@locale": "tr",
+  "settings_account_opens_inbox": "Hesaba tıklayınca gelen kutusunu aç",
+  "settings_account_opens_inbox_help": "Kenar çubuğunda bir hesaba tıklamak, onu açmanın yanında gelen kutusunu da hemen gösterir",
   "wit_tool_create_skill": "Skill oluştur",
   "wit_skill_name": "Tanımlayıcı",
   "wit_skill_display_name": "Görünen ad",

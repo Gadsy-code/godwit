@@ -1,5 +1,7 @@
 {
   "@@locale": "ko",
+  "settings_account_opens_inbox": "계정 클릭 시 받은편지함 열기",
+  "settings_account_opens_inbox_help": "사이드바에서 계정을 클릭하면 펼치는 동시에 받은편지함을 바로 보여 줍니다",
   "wit_tool_create_skill": "Skill 만들기",
   "wit_skill_name": "식별자",
   "wit_skill_display_name": "표시 이름",

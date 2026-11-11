@@ -1,5 +1,7 @@
 {
   "@@locale": "ja",
+  "settings_account_opens_inbox": "アカウントのクリックで受信トレイを開く",
+  "settings_account_opens_inbox_help": "サイドバーでアカウントをクリックすると、展開すると同時にその受信トレイを表示します",
   "wit_tool_create_skill": "Skill を作成",
   "wit_skill_name": "識別子",
   "wit_skill_display_name": "表示名",

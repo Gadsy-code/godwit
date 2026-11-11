@@ -1,5 +1,7 @@
 {
   "@@locale": "fr",
+  "settings_account_opens_inbox": "Ouvrir la boîte de réception au clic sur un compte",
+  "settings_account_opens_inbox_help": "Un clic sur un compte dans la barre latérale affiche aussitôt sa boîte de réception et le déplie",
   "wit_tool_create_skill": "Créer un Skill",
   "wit_skill_name": "Identifiant",
   "wit_skill_display_name": "Nom affiché",

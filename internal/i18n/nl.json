@@ -1,5 +1,7 @@
 {
   "@@locale": "nl",
+  "settings_account_opens_inbox": "Postvak IN openen bij klikken op een account",
+  "settings_account_opens_inbox_help": "Een klik op een account in de zijbalk toont meteen het Postvak IN en klapt het open",
   "wit_tool_create_skill": "Skill maken",
   "wit_skill_name": "Identificatie",
   "wit_skill_display_name": "Weergavenaam",

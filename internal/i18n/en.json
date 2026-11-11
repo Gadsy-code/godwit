@@ -1,5 +1,7 @@
 {
   "@@locale": "en",
+  "settings_account_opens_inbox": "Open the inbox when clicking an account",
+  "settings_account_opens_inbox_help": "A click on an account in the sidebar shows its inbox at once, as well as unfolding it",
   "wit_tool_create_skill": "Create a Skill",
   "wit_skill_name": "Identifier",
   "wit_skill_display_name": "Display name",

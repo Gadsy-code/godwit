@@ -191,7 +191,8 @@ func (p *mailPage) viewShown(v core.View) bool {
 func (p *mailPage) account(c *ui.Context, acc core.Account) {
 	t := theme.Of(c)
 	name := accountName(acc)
-	row := kit.SidebarCollapsible(c, p.accountOpen(acc.ID), false, func() {
+	open := p.accountOpen(acc.ID)
+	row := kit.SidebarCollapsible(c, open, false, func() {
 		p.a.accountMark(c, acc) // as in the settings sidebar
 		ui.Text(c, name).SingleLine().Grow(1).Shrink(1).TextColor(t.Foreground)
 		if n := p.a.unread[acc.ID]; n > 0 {
@@ -215,6 +216,26 @@ func (p *mailPage) account(c *ui.Context, acc core.Account) {
 		}
 	})
 	row.ContextMenu(func(m *ui.Menu) { p.accountItems(m, acc, 0) })
+	if p.a.settings.AccountOpensInbox && row.Clicked() {
+		p.openAccountInbox(acc)
+	}
+}
+
+// openAccountInbox shows an account's inbox and keeps it unfolded, for a click on the account
+// (Settings.AccountOpensInbox). Where the inbox is already shown the click only folds it, as it always did.
+func (p *mailPage) openAccountInbox(acc core.Account) {
+	for _, f := range p.folders[acc.ID] {
+		if f.Role != "inbox" {
+			continue
+		}
+		v := core.View{FolderID: f.ID}
+		if p.viewShown(v) {
+			return
+		}
+		*p.accountOpen(acc.ID) = true // the fold the click just made is undone
+		p.a.navigate(Route{Page: PageMail, View: v})
+		return
+	}
 }
 
 // accountItems are a sidebar menu's account entries: sync it now, or edit it

@@ -1,5 +1,7 @@
 {
   "@@locale": "it",
+  "settings_account_opens_inbox": "Apri la posta in arrivo al clic su una casella",
+  "settings_account_opens_inbox_help": "Un clic su una casella nella barra laterale mostra subito la sua posta in arrivo e la espande",
   "wit_tool_create_skill": "Crea uno Skill",
   "wit_skill_name": "Identificatore",
   "wit_skill_display_name": "Nome visualizzato",

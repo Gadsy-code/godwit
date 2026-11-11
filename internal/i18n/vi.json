@@ -1,5 +1,7 @@
 {
   "@@locale": "vi",
+  "settings_account_opens_inbox": "Mở hộp thư đến khi nhấp vào tài khoản",
+  "settings_account_opens_inbox_help": "Nhấp vào tài khoản ở thanh bên sẽ hiện ngay hộp thư đến của nó và mở rộng nó",
   "wit_tool_create_skill": "Tạo Skill",
   "wit_skill_name": "Mã định danh",
   "wit_skill_display_name": "Tên hiển thị",
