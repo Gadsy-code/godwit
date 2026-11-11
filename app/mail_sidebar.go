@@ -130,25 +130,38 @@ func (p *mailPage) Sidebar(c *ui.Context) {
 			p.navItem(c, "outbox", i18n.T("mail.outbox"), core.View{Unified: "outbox"}, n)
 		}
 		ui.Box(c).Height(th.Space(2))
-		p.viewNav(c)
-		p.labelNav(c)
-		kit.SidebarCollapsible(c, &p.accountsOpen, true, func() {
-			ui.Text(c, i18n.T("mail.accounts")).SingleLine().Grow(1).Shrink(1)
-		}, func() {
-			for _, acc := range a.accounts {
-				p.account(c, acc)
+		for _, section := range core.SidebarOrder(a.settings) {
+			switch section {
+			case "views":
+				p.viewNav(c)
+			case "labels":
+				p.labelNav(c)
+			case "accounts":
+				p.accountsNav(c)
 			}
-			kit.SidebarItem(c, kit.SidebarItemOpts{Muted: true, Small: true, OnClick: func() {
-				a.navigate(Route{Page: PageSettings})
-				a.openAddAccount()
-			}}).Children(func() {
-				ui.Icon(c, icons.Get("plus")).Size(theme.IconXs, theme.IconXs)
-				ui.Text(c, i18n.T("mail.add_account"))
-			})
-			kit.SidebarItem(c, kit.SidebarItemOpts{Muted: true, Small: true, OnClick: p.newArchive}).Children(func() {
-				ui.Icon(c, icons.Get("archive")).Size(theme.IconXs, theme.IconXs)
-				ui.Text(c, i18n.T("mail.archive.new"))
-			})
+		}
+	})
+}
+
+// accountsNav is the sidebar's accounts section, with the rows that add one.
+func (p *mailPage) accountsNav(c *ui.Context) {
+	a := p.a
+	kit.SidebarCollapsible(c, &p.accountsOpen, true, func() {
+		ui.Text(c, i18n.T("mail.accounts")).SingleLine().Grow(1).Shrink(1)
+	}, func() {
+		for _, acc := range a.accounts {
+			p.account(c, acc)
+		}
+		kit.SidebarItem(c, kit.SidebarItemOpts{Muted: true, Small: true, OnClick: func() {
+			a.navigate(Route{Page: PageSettings})
+			a.openAddAccount()
+		}}).Children(func() {
+			ui.Icon(c, icons.Get("plus")).Size(theme.IconXs, theme.IconXs)
+			ui.Text(c, i18n.T("mail.add_account"))
+		})
+		kit.SidebarItem(c, kit.SidebarItemOpts{Muted: true, Small: true, OnClick: p.newArchive}).Children(func() {
+			ui.Icon(c, icons.Get("archive")).Size(theme.IconXs, theme.IconXs)
+			ui.Text(c, i18n.T("mail.archive.new"))
 		})
 	})
 }
