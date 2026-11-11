@@ -239,6 +239,7 @@ const pages: Record<string, { states: string[]; entry: () => Promise<unknown>; s
         cut: false,
         theme: fx.theme(mode),
         locale: "zh-Hans",
+        collapseQuotes: false,
       };
       installFake({
         "ReaderPage.Load": async () => body,

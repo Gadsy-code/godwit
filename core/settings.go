@@ -103,6 +103,9 @@ type Settings struct {
 	// LabelDisplay is how label chips show: LabelDisplayBoth (the default;
 	// "" too), LabelDisplayIcon or LabelDisplayText.
 	LabelDisplay string
+	// CollapseQuotes folds the quoted text of a mail (what it replies to or forwards)
+	// behind a button in the reader, leaving what its sender wrote.
+	CollapseQuotes bool
 	// SidebarWidth is the page sidebars' width in DIPs, the user's drag:
 	// 0 for the default, else 240 to 480.
 	SidebarWidth int

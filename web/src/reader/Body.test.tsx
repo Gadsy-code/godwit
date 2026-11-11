@@ -58,6 +58,7 @@ const body = (version: number, html: string, over: Partial<ReaderBody> = {}): Re
   cut: false,
   theme,
   locale: "en",
+  collapseQuotes: false,
   ...over,
 });
 

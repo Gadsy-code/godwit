@@ -1,5 +1,7 @@
 {
   "@@locale": "tr",
+  "settings_collapse_quotes": "Alıntılanan metni katla",
+  "settings_collapse_quotes_help": "Bir yanıtın alıntıladığı kısmı bir düğmenin arkasına gizle, yalnızca gönderenin yazdığı görünsün",
   "wit_tool_create_skill": "Skill oluştur",
   "wit_skill_name": "Tanımlayıcı",
   "wit_skill_display_name": "Görünen ad",

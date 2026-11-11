@@ -20,6 +20,7 @@ const body = (over: Partial<ReaderBody> = {}): ReaderBody => ({
   cut: false,
   theme: theme(),
   locale: "en",
+  collapseQuotes: false,
   ...over,
 });
 const parse = (s: string) => new DOMParser().parseFromString(s, "text/html");
@@ -239,4 +240,72 @@ test("plain text is transparent in the theme's colour scheme", () => {
   expect(css("dark")).not.toContain("#fff");
   expect(frameScheme(plain, theme({ mode: "dark" }))).toBe("dark");
   expect(frameScheme(plain, theme({ mode: "system" }))).toBe("light dark");
+});
+
+// Quoted text: a reply folds what it replies to behind a button, and keeps what its sender wrote.
+const folded = (over: Partial<ReaderBody>) =>
+  parse(buildSrcdoc(body({ collapseQuotes: true, ...over }), theme())).getElementById(
+    "godwit-body",
+  );
+
+test("a reply's quoted text folds behind a button", () => {
+  const w = folded({
+    html:
+      "<p>Thanks, 8 works.</p>" +
+      '<div class="gmail_quote"><div class="gmail_attr">On Tue, Bob wrote:</div>' +
+      '<blockquote class="gmail_quote"><p>Dinner?</p></blockquote></div>',
+  });
+  const fold = w?.querySelector("details.godwit-quote-fold");
+  expect(fold).not.toBeNull();
+  expect(fold?.hasAttribute("open")).toBe(false);
+  expect(fold?.querySelector("summary")?.textContent).toBe("⋯");
+  expect(fold?.textContent).toContain("Dinner?");
+  expect(w?.firstElementChild?.textContent).toBe("Thanks, 8 works."); // the sender's own text stays out
+});
+
+test("a bare blockquote folds once, nested ones with it", () => {
+  const w = folded({ html: "<p>OK</p><blockquote>one<blockquote>two</blockquote></blockquote>" });
+  expect(w?.querySelectorAll("details.godwit-quote-fold")).toHaveLength(1);
+  expect(w?.querySelector("details blockquote blockquote")?.textContent).toBe("two");
+});
+
+test("only a quote at the end folds: an inline reply stays open", () => {
+  const w = folded({
+    html: "<blockquote>q1</blockquote><p>my answer</p><blockquote>q2</blockquote><p>-- me</p>",
+  });
+  expect(w?.querySelector("details")).toBeNull();
+});
+
+test("a message that is nothing but a quote stays open", () => {
+  expect(
+    folded({ html: "<blockquote>Forwarded text</blockquote>" })?.querySelector("details"),
+  ).toBeNull();
+});
+
+test("folding is off unless asked, and leaves the markup as it came", () => {
+  const html = "<p>OK</p><blockquote>q</blockquote>";
+  const w = parse(buildSrcdoc(body({ html, collapseQuotes: false }), theme())).getElementById(
+    "godwit-body",
+  );
+  expect(w?.querySelector("details")).toBeNull();
+  expect(w?.innerHTML).toBe(html);
+});
+
+test("a leading style stays when a quote folds", () => {
+  const w = folded({ html: "<style>p{color:red}</style><p>OK</p><blockquote>q</blockquote>" });
+  expect(w?.querySelector("style")?.textContent).toBe("p{color:red}");
+  expect(w?.querySelector("details")).not.toBeNull();
+});
+
+test("plain text: the trailing '>' lines fold, the attribution stays", () => {
+  const w = folded({ html: "", plain: "Thanks!\n\nOn Tue, Bob wrote:\n> Dinner?\n> At 8?\n" });
+  const fold = w?.querySelector("details.godwit-quote-fold");
+  expect(fold?.textContent).toContain("> Dinner?");
+  expect(fold?.textContent).toContain("> At 8?");
+  expect(w?.textContent).toContain("On Tue, Bob wrote:");
+  expect(fold?.textContent).not.toContain("On Tue");
+});
+
+test("plain text: nothing but quoted lines stays open", () => {
+  expect(folded({ html: "", plain: "> a\n> b" })?.querySelector("details")).toBeNull();
 });

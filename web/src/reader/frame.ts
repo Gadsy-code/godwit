@@ -34,9 +34,19 @@ function linkLength(u: string): number {
  * Plain text as HTML: escaped, its web addresses links (data-href, as Go makes an HTML mail's)
  * and its quoted lines ("> …") marked, which the style mutes.
  */
-export function plainHTML(text: string): string {
-  return text
-    .split("\n")
+export function plainHTML(text: string, fold = false): string {
+  const lines = text.split("\n");
+  const quoted = (line: string) => /^\s*>/.test(line);
+  // With fold: the quoted lines at the end (blank lines among them) fold behind a button, when the
+  // message has words of its own above them; what introduces the quote ("On … wrote:") is one.
+  let from = lines.length;
+  if (fold) {
+    while (from > 0 && (quoted(lines[from - 1]) || lines[from - 1].trim() === "")) from--;
+    while (from < lines.length && !quoted(lines[from])) from++;
+    if (from === lines.length || !lines.slice(0, from).some((l) => l.trim() !== ""))
+      from = lines.length;
+  }
+  const html = lines
     .map((line) => {
       let html = "";
       let at = 0;
@@ -48,9 +58,60 @@ export function plainHTML(text: string): string {
         at = m.index + link.length;
       }
       html += escapeText(line.slice(at));
-      return /^\s*>/.test(line) ? `<span class="godwit-quote">${html}</span>` : html;
+      return quoted(line) ? `<span class="godwit-quote">${html}</span>` : html;
     })
-    .join("\n");
+    .map((h, i) => (i === from ? FOLD_OPEN + h : h));
+  return html.join("\n") + (from < lines.length ? FOLD_CLOSE : "");
+}
+
+// A quote folded behind a button: <details> needs no script, which the frame may not run.
+const FOLD_OPEN = '<details class="godwit-quote-fold"><summary>⋯</summary>';
+const FOLD_CLOSE = "</details>";
+
+// The words of a node, left out of the count when they are a stylesheet's or a script's.
+const visibleWords = (doc: Document, root: Node, keep: (n: Node) => boolean): string => {
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let out = "";
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const tag = n.parentElement?.tagName;
+    if (tag !== "STYLE" && tag !== "SCRIPT" && keep(n)) out += n.textContent;
+  }
+  return out.trim();
+};
+
+const QUOTE = "blockquote, div.gmail_quote";
+
+/**
+ * An HTML body with the quote at its end folded behind a button: the last outermost blockquote (or
+ * Gmail's div.gmail_quote), when the message has words of its own before it and none after. An
+ * inline reply (a quote with an answer after it) and a message that is only a quote stay open.
+ */
+export function foldQuotes(html: string): string {
+  const doc = new DOMParser().parseFromString(`<!doctype html><body>${html}`, "text/html");
+  const last = [...doc.body.querySelectorAll(QUOTE)]
+    .filter((q) => !q.parentElement?.closest(QUOTE))
+    .at(-1);
+  if (!last) return html;
+  const before = visibleWords(
+    doc,
+    doc.body,
+    (n) =>
+      !last.contains(n) && !!(last.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING),
+  );
+  const after = visibleWords(
+    doc,
+    doc.body,
+    (n) =>
+      !last.contains(n) && !!(last.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING),
+  );
+  if (before === "" || after !== "") return html;
+  const fold = doc.createElement("details");
+  fold.className = "godwit-quote-fold";
+  const summary = doc.createElement("summary");
+  summary.textContent = "⋯";
+  last.replaceWith(fold);
+  fold.append(summary, last);
+  return doc.body.innerHTML;
 }
 
 // A theme value goes into a <style> only if it can't leave its declaration.
@@ -143,6 +204,6 @@ export function buildSrcdoc(b: ReaderBody, t: Theme, systemDark = false): string
     `<meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}">` +
     '<meta charset="utf-8">' +
     `<style>${css}</style></head>` +
-    `<body><div id="godwit-body" class="${cls}"${auto ? " data-auto-dark" : ""}>${html ? b.html : plainHTML(b.plain)}</div></body></html>`
+    `<body><div id="godwit-body" class="${cls}"${auto ? " data-auto-dark" : ""}>${html ? (b.collapseQuotes ? foldQuotes(b.html) : b.html) : plainHTML(b.plain, b.collapseQuotes)}</div></body></html>`
   );
 }

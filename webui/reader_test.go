@@ -1134,3 +1134,22 @@ func TestReaderInlinePixelsCarryIntoTheProxyBudget(t *testing.T) {
 	f.waitEmitted(t, k)
 	assert.Equal(t, http.StatusForbidden, f.image(t, 6, srv.URL+"/r.png").Code, "72 MP inline + 36 MP remote is over 100 MP")
 }
+
+// The reader page tells the frame whether to fold quoted text, as the setting says.
+func TestReaderBodyCarriesCollapseQuotes(t *testing.T) {
+	f := newReaderFixture(t)
+	m := f.remoteMail(t, "Re: lunch", "https://tracker.example/pixel.png")
+	b, err := f.p.Load(pageCtx(f.page(m.ID)))
+	require.NoError(t, err)
+	assert.False(t, b.CollapseQuotes, "off by default")
+
+	st, err := f.e.Svc.GetSettings(t.Context())
+	require.NoError(t, err)
+	st.CollapseQuotes = true
+	_, err = f.e.Svc.SetSettings(t.Context(), st)
+	require.NoError(t, err)
+	m2 := f.remoteMail(t, "Re: dinner", "https://tracker.example/pixel2.png")
+	b, err = f.p.Load(pageCtx(f.page(m2.ID)))
+	require.NoError(t, err)
+	assert.True(t, b.CollapseQuotes)
+}

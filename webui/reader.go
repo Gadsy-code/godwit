@@ -50,6 +50,8 @@ type ReaderBody struct {
 	Cut    bool   `json:"cut"`
 	Theme  Theme  `json:"theme"`
 	Locale string `json:"locale"`
+	// CollapseQuotes is Settings.CollapseQuotes: the frame folds quoted text.
+	CollapseQuotes bool `json:"collapseQuotes"`
 }
 
 // ReaderReload tells a reader page its body changed (加载图片, a retry).
@@ -350,7 +352,7 @@ func (r *Reader) build(ctx context.Context, svc *core.Service, message, v int64,
 		return ReaderBody{}, err
 	}
 	b := ReaderBody{Message: message, Version: v, Remote: allowed, Blocked: m.RemoteImagesBlocked, Cut: m.Truncated,
-		Theme: ThemeOf(st), Locale: i18n.Language()}
+		Theme: ThemeOf(st), Locale: i18n.Language(), CollapseQuotes: st.CollapseQuotes}
 	var tokens map[string]string
 	budget := imagefetch.NewBudget() // the message's images, inline and remote
 	if m.HTML != "" {

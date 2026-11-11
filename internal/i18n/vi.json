@@ -1,5 +1,7 @@
 {
   "@@locale": "vi",
+  "settings_collapse_quotes": "Thu gọn văn bản trích dẫn",
+  "settings_collapse_quotes_help": "Ẩn phần mà thư trả lời trích dẫn sau một nút, chỉ hiện những gì người gửi đã viết",
   "wit_tool_create_skill": "Tạo Skill",
   "wit_skill_name": "Mã định danh",
   "wit_skill_display_name": "Tên hiển thị",

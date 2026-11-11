@@ -1,5 +1,7 @@
 {
   "@@locale": "de",
+  "settings_collapse_quotes": "Zitierten Text einklappen",
+  "settings_collapse_quotes_help": "Zitierten Text hinter einer Schaltfläche verbergen, sodass nur der eigene Text des Absenders zu sehen ist",
   "wit_tool_create_skill": "Skill erstellen",
   "wit_skill_name": "Kennung",
   "wit_skill_display_name": "Anzeigename",
