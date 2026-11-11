@@ -266,14 +266,7 @@ func (p *settingsPage) generalView(c *ui.Context) {
 			opts := append([]kit.Option[int]{{Value: 0, Label: i18n.T("settings.body_font_size.ui")}}, sizeOptions([]int{16, 18}, 0, cmp.Or(st.BodyFontSize, 16))...)
 			return settingSelect(c, i18n.T("settings.body_font_size"), &st.BodyFontSize, opts)
 		}),
-		sel(i18n.T("settings.sidebar_order"), i18n.T("settings.sidebar_order.help"), func() ui.Element {
-			cur := strings.Join(core.SidebarOrder(*st), ",")
-			el := settingSelect(c, i18n.T("settings.sidebar_order"), &cur, sidebarOrderOptions())
-			if cur != strings.Join(core.SidebarOrder(*st), ",") {
-				st.SidebarOrder = cur
-			}
-			return el
-		}),
+		func() { p.sidebarSections(c) },
 		sel(i18n.T("settings.list_order"), i18n.T("settings.list_order.help"), func() ui.Element {
 			cur := cmp.Or(st.ListRowOrder, core.ListRowSender)
 			el := settingSelect(c, i18n.T("settings.list_order"), &cur, []kit.Option[string]{
@@ -340,6 +333,50 @@ func (p *settingsPage) generalView(c *ui.Context) {
 			})
 		})
 	p.proxySection(c)
+}
+
+// sidebarSections is the mail sidebar's three sections, top to bottom, dragged
+// to reorder them (ListState.Reorder). The choice is Settings.SidebarOrder.
+func (p *settingsPage) sidebarSections(c *ui.Context) {
+	t, th := theme.Of(c), c.Theme()
+	order := core.SidebarOrder(p.st)
+	name := map[string]string{
+		"views":    i18n.T("view.title"),
+		"labels":   i18n.T("mail.labels"),
+		"accounts": i18n.T("mail.accounts"),
+	}
+	ui.Column(c).FillWidth().Padding(th.Space(2), 0, th.Space(1), 0).Children(func() {
+		ui.Column(c).FillWidth().Gap(th.Space(0.5)).Padding(0, th.Space(4)).Children(func() {
+			label := i18n.T("settings.sidebar_order")
+			kit.Text(c, label, t.Text.Body).LineHeight(theme.LineFor(label)).FontWeight(500)
+			kit.Text(c, i18n.T("settings.sidebar_order.help"), t.Text.Sm).TextColor(t.Muted)
+		})
+		p.sidebarOrder.Key = func(i int) any { return order[i] }
+		p.sidebarOrder.Label = func(i int) string { return name[order[i]] }
+		p.sidebarOrder.Reorder = func(rows []int, to int) { p.moveSidebarSection(order, rows[0], to) }
+		n := len(order)
+		rowH := th.Space(12)
+		kit.List(c, &p.sidebarOrder, n, func(i int) {
+			ui.Row(c).FillWidth().Gap(th.Space(3)).Padding(0, th.Space(4)).Height(rowH).AlignItems(ui.Center).Background(t.Card).Children(func() {
+				ui.Icon(c, icons.Get("grip")).Size(theme.Icon, theme.Icon).TextColor(t.Idle)
+				kit.Text(c, name[order[i]], t.Text.Body).SingleLine()
+			})
+		}).FillWidth().Height(float32(n) * rowH)
+	})
+}
+
+// moveSidebarSection puts the section at i before the one at to (len for the end).
+func (p *settingsPage) moveSidebarSection(order []string, i, to int) {
+	if to > i {
+		to-- // i is taken out first
+	}
+	if to == i {
+		return
+	}
+	next := slices.Clone(order)
+	id := next[i]
+	next = slices.Insert(slices.Delete(next, i, i+1), to, id)
+	p.st.SidebarOrder = strings.Join(next, ",")
 }
 
 // labsView is 实验室: the features still on trial, each a switch.

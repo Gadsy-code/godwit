@@ -77,3 +77,35 @@ func TestLayoutSettingsPage(t *testing.T) {
 		t.Fatalf("reader width %q after choosing it", got)
 	}
 }
+
+// The sidebar sections are dragged into order, and the mail sidebar follows.
+func TestSidebarOrderDrag(t *testing.T) {
+	h, _ := mailHarness(t, nil, "alice@example.com")
+	h.openSettings("general")
+	views, accounts := i18n.T("view.title"), i18n.T("mail.accounts")
+	menu := views + " › " + i18n.T("mail.labels")
+	if h.tt.HasText(menu) {
+		t.Fatalf("the order menu is still there")
+	}
+	row, ok := h.tt.Find(views)
+	if !ok {
+		t.Fatalf("no %q row; texts %q", views, h.tt.Texts())
+	}
+	x, y := row.X+row.W/2, row.Y+row.H/2
+	h.tt.Move(x, y)
+	h.tt.Press(x, y)
+	h.tt.Move(x, y+20)
+	h.tt.Move(x, y+110)
+	h.tt.Release(x, y+110)
+	h.drain()
+	h.until("the sections reordered", func() bool {
+		return h.app.settings.SidebarOrder == "labels,accounts,views"
+	})
+	h.app.navigate(Route{Page: PageMail})
+	h.drain()
+	h.tt.Frame()
+	h.until("the accounts above the views", func() bool { return h.top(accounts) < h.top(views) })
+	if h.top(i18n.T("mail.compose")) > h.top(accounts) {
+		t.Fatal("compose moved below the accounts")
+	}
+}
