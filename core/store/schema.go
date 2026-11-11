@@ -782,6 +782,10 @@ var Migrations = [][]string{{
 	// subjectThread looks up an account's messages in a date window, and
 	// account-scoped search orders by (date DESC, id DESC).
 	`CREATE INDEX messages_account_date ON messages(account_id, date DESC, id DESC)`,
+}, {
+	// Server refusals of an op; attempts counts every send that may have
+	// reached the server, and only MaxAttempts refusals give the op up.
+	`ALTER TABLE ops ADD COLUMN refusals INTEGER NOT NULL DEFAULT 0`,
 }}
 
 // HistoryRowsVersion is the schema version that keeps a conversation's
