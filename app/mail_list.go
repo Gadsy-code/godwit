@@ -111,6 +111,7 @@ type mailPage struct {
 	accLabelsOpen            map[int64]*bool         // account labels unfolded in the sidebar, by account
 	folderOpen               map[folderKey]*bool     // user folders unfolded in the sidebar
 	labelsOpen, accountsOpen bool                    // the sidebar's groups unfolded
+	labelGroups              map[labelGroupKey]*bool // the label groups unfolded in the sidebar (labelGroupOpen)
 
 	searchOpen, searched bool
 	query                string

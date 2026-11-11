@@ -137,16 +137,13 @@ func (p *mailPage) labelNav(c *ui.Context) {
 	kit.SidebarCollapsible(c, &p.labelsOpen, true, func() {
 		ui.Text(c, i18n.T("mail.labels")).SingleLine().Grow(1).Shrink(1)
 	}, func() {
-		for _, l := range a.labels {
-			if l.Count == 0 {
-				continue
-			}
+		p.labelRows(c, a.labels, 0, 0, func(l core.Label, name string, indent float32) {
 			v := core.View{LabelID: l.ID}
 			on := p.viewShown(v)
-			item := kit.SidebarItem(c, kit.SidebarItemOpts{Selected: on, Covered: p.viewEdit != nil, OnClick: func() { a.navigate(Route{Page: PageMail, View: v}) }})
+			item := kit.SidebarItem(c, kit.SidebarItemOpts{Selected: on, Covered: p.viewEdit != nil, Indent: indent, OnClick: func() { a.navigate(Route{Page: PageMail, View: v}) }})
 			item.Children(func() {
 				ui.Icon(c, icons.Get("label-"+l.Icon)).Size(theme.Icon, theme.Icon).TextColor(t.Label(l.Color).Text)
-				ui.Text(c, l.Name).SingleLine().Grow(1).Shrink(1)
+				ui.Text(c, name).SingleLine().Grow(1).Shrink(1)
 				if l.Unread > 0 {
 					kit.Text(c, strconv.Itoa(l.Unread), t.Text.Sm).TextColor(t.Muted)
 				}
@@ -156,7 +153,7 @@ func (p *mailPage) labelNav(c *ui.Context) {
 					p.markViewAsRead(core.View{LabelID: l.ID})
 				}
 			})
-		}
+		})
 	})
 	ui.Box(c).Height(th.Space(2))
 }

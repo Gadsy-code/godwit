@@ -360,21 +360,18 @@ func (p *mailPage) accountLabelsNav(c *ui.Context, accID int64) {
 			kit.Text(c, strconv.Itoa(totalUnread), t.Text.Sm).TextColor(t.Muted)
 		}
 	}, func() {
-		for _, l := range labels {
-			if l.Count == 0 {
-				continue
-			}
+		p.labelRows(c, labels, accID, 8, func(l core.Label, name string, indent float32) {
 			v := core.View{AccountID: accID, LabelID: l.ID}
 			on := p.viewShown(v)
-			item := kit.SidebarItem(c, kit.SidebarItemOpts{Selected: on, Covered: p.viewEdit != nil, Indent: 8, OnClick: func() { p.a.navigate(Route{Page: PageMail, View: v}) }})
+			item := kit.SidebarItem(c, kit.SidebarItemOpts{Selected: on, Covered: p.viewEdit != nil, Indent: indent, OnClick: func() { p.a.navigate(Route{Page: PageMail, View: v}) }})
 			item.Children(func() {
 				ui.Icon(c, icons.Get("label-"+l.Icon)).Size(theme.Icon, theme.Icon).TextColor(t.Label(l.Color).Text)
-				ui.Text(c, l.Name).SingleLine().Grow(1).Shrink(1)
+				ui.Text(c, name).SingleLine().Grow(1).Shrink(1)
 				if l.Unread > 0 {
 					kit.Text(c, strconv.Itoa(l.Unread), t.Text.Sm).TextColor(t.Muted)
 				}
 			})
-		}
+		})
 	})
 	tr.Padding(0, th.Space(2), 0, th.Space(6))
 }
