@@ -1,5 +1,9 @@
 {
   "@@locale": "pt",
+  "settings_remote_images_keep": "Manter imagens não usadas",
+  "settings_remote_images_keep_help": "As imagens em cache não abertas durante este tempo são apagadas. Os anexos nunca são tocados. Uma mensagem antiga volta a carregá-las se o remetente ainda as tiver.",
+  "settings_remote_images_keep_forever": "Até a cache ficar cheia",
+  "settings_remote_images_keep_days": "{arg1} dias",
   "wit_tool_create_skill": "Criar um Skill",
   "wit_skill_name": "Identificador",
   "wit_skill_display_name": "Nome de exibição",

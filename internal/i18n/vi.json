@@ -1,5 +1,9 @@
 {
   "@@locale": "vi",
+  "settings_remote_images_keep": "Giữ hình ảnh không dùng",
+  "settings_remote_images_keep_help": "Hình ảnh trong bộ nhớ đệm không được mở trong khoảng thời gian này sẽ bị xóa. Tệp đính kèm không bao giờ bị động đến. Thư cũ sẽ tải lại chúng nếu người gửi vẫn còn.",
+  "settings_remote_images_keep_forever": "Cho đến khi bộ nhớ đệm đầy",
+  "settings_remote_images_keep_days": "{arg1} ngày",
   "wit_tool_create_skill": "Tạo Skill",
   "wit_skill_name": "Mã định danh",
   "wit_skill_display_name": "Tên hiển thị",

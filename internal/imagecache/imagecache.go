@@ -701,3 +701,19 @@ func (c *Cache) evict() {
 		delete(c.files, k)
 	}
 }
+
+// PruneUnused deletes every cached image that has not been read since cutoff,
+// and reports how many it deleted. A read stamps the file, so the age survives a
+// restart. A remembered miss is left to evict.
+func (c *Cache) PruneUnused(cutoff time.Time) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for k, e := range c.files {
+		if e.format != "miss" && e.used.Before(cutoff) {
+			c.remove(k)
+			n++
+		}
+	}
+	return n
+}

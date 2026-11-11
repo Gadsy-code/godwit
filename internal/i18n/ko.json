@@ -1,5 +1,9 @@
 {
   "@@locale": "ko",
+  "settings_remote_images_keep": "사용하지 않은 이미지 보관",
+  "settings_remote_images_keep_help": "이 기간 동안 열지 않은 캐시 이미지는 삭제됩니다. 첨부 파일은 삭제되지 않습니다. 오래된 메일은 보낸 사람 쪽에 아직 있으면 이미지를 다시 불러옵니다.",
+  "settings_remote_images_keep_forever": "캐시가 가득 찰 때까지",
+  "settings_remote_images_keep_days": "{arg1}일",
   "wit_tool_create_skill": "Skill 만들기",
   "wit_skill_name": "식별자",
   "wit_skill_display_name": "표시 이름",

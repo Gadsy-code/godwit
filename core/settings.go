@@ -103,6 +103,10 @@ type Settings struct {
 	// LabelDisplay is how label chips show: LabelDisplayBoth (the default;
 	// "" too), LabelDisplayIcon or LabelDisplayText.
 	LabelDisplay string
+	// ImageRetentionDays deletes a cached remote image that has gone unread this
+	// many days: 0 keeps it until the cache is full, then evicts the least
+	// recently used (MaxBytes). Attachments are not in that cache.
+	ImageRetentionDays int
 	// SidebarWidth is the page sidebars' width in DIPs, the user's drag:
 	// 0 for the default, else 240 to 480.
 	SidebarWidth int
@@ -168,6 +172,9 @@ const (
 	LabelDisplayText = "text"
 )
 
+// MaxImageRetentionDays bounds Settings.ImageRetentionDays.
+const MaxImageRetentionDays = 365
+
 // MinThreadCollapse and MaxThreadCollapse bound ThreadCollapseThreshold.
 const (
 	MinThreadCollapse     = 2
@@ -222,6 +229,8 @@ func (st Settings) validate(kept []mask.Rule) error {
 		return fmt.Errorf("invalid reply language mode %q", st.ReplyLanguage)
 	case !in(st.LabelDisplay, "", LabelDisplayBoth, LabelDisplayIcon, LabelDisplayText):
 		return fmt.Errorf("invalid label display %q", st.LabelDisplay)
+	case st.ImageRetentionDays < 0 || st.ImageRetentionDays > MaxImageRetentionDays:
+		return fmt.Errorf("image retention must be between 0 and %d days", MaxImageRetentionDays)
 	case st.FontSize < 10 || st.FontSize > 32, st.BodyFontSize != 0 && (st.BodyFontSize < 10 || st.BodyFontSize > 32):
 		return fmt.Errorf("font size must be between 10 and 32")
 	case st.SidebarWidth != 0 && (st.SidebarWidth < 240 || st.SidebarWidth > 480):

@@ -1,5 +1,9 @@
 {
   "@@locale": "de",
+  "settings_remote_images_keep": "Ungenutzte Bilder behalten",
+  "settings_remote_images_keep_help": "Zwischengespeicherte Bilder, die so lange nicht geöffnet wurden, werden gelöscht. Anhänge bleiben unberührt. Eine alte Nachricht lädt sie erneut, wenn der Absender sie noch hat.",
+  "settings_remote_images_keep_forever": "Bis der Cache voll ist",
+  "settings_remote_images_keep_days": "{arg1} Tage",
   "wit_tool_create_skill": "Skill erstellen",
   "wit_skill_name": "Kennung",
   "wit_skill_display_name": "Anzeigename",

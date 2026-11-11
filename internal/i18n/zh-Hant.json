@@ -1,5 +1,9 @@
 {
   "@@locale": "zh-Hant",
+  "settings_remote_images_keep": "保留未使用的圖片",
+  "settings_remote_images_keep_help": "快取的圖片超過這段時間沒有開啟就會刪除。附件不會被動。舊郵件在寄件者那裡還有圖片時會重新載入。",
+  "settings_remote_images_keep_forever": "直到快取已滿",
+  "settings_remote_images_keep_days": "{arg1} 天",
   "wit_tool_create_skill": "建立 Skill",
   "wit_skill_name": "識別碼",
   "wit_skill_display_name": "顯示名稱",

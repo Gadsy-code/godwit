@@ -269,3 +269,23 @@ func TestSettingsTypeMismatchErrors(t *testing.T) {
 	_, err = s.GetSettings(t.Context())
 	assert.ErrorContains(t, err, "stored settings")
 }
+
+// How long cached remote images are kept unused. 0 keeps them until the cache is full.
+func TestSettingsImageRetention(t *testing.T) {
+	s := settingsService(t, t.TempDir(), "")
+	st, err := s.GetSettings(t.Context())
+	require.NoError(t, err)
+	assert.Zero(t, st.ImageRetentionDays, "off by default")
+
+	st.ImageRetentionDays = 14
+	got, err := s.SetSettings(t.Context(), st)
+	require.NoError(t, err)
+	assert.Equal(t, 14, got.ImageRetentionDays)
+
+	for _, days := range []int{-1, 366} {
+		in := got
+		in.ImageRetentionDays = days
+		_, err := s.SetSettings(t.Context(), in)
+		assert.Error(t, err, "%d days", days)
+	}
+}

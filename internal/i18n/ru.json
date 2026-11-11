@@ -1,5 +1,9 @@
 {
   "@@locale": "ru",
+  "settings_remote_images_keep": "Хранить неиспользуемые изображения",
+  "settings_remote_images_keep_help": "Изображения в кеше, не открывавшиеся так долго, удаляются. Вложения не затрагиваются. Старое письмо загрузит их снова, если они ещё есть у отправителя.",
+  "settings_remote_images_keep_forever": "Пока кеш не заполнится",
+  "settings_remote_images_keep_days": "{arg1} дней",
   "wit_tool_create_skill": "Создать Skill",
   "wit_skill_name": "Идентификатор",
   "wit_skill_display_name": "Отображаемое имя",
