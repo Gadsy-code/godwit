@@ -1,5 +1,7 @@
 {
   "@@locale": "zh-Hans",
+  "settings_labels_move_up": "将 {arg1} 上移",
+  "settings_labels_move_down": "将 {arg1} 下移",
   "wit_tool_create_skill": "创建 Skill",
   "wit_skill_name": "标识符",
   "wit_skill_display_name": "显示名称",

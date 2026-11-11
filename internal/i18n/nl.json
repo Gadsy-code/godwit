@@ -1,5 +1,7 @@
 {
   "@@locale": "nl",
+  "settings_labels_move_up": "{arg1} omhoog",
+  "settings_labels_move_down": "{arg1} omlaag",
   "wit_tool_create_skill": "Skill maken",
   "wit_skill_name": "Identificatie",
   "wit_skill_display_name": "Weergavenaam",

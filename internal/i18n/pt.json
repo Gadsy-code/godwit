@@ -1,5 +1,7 @@
 {
   "@@locale": "pt",
+  "settings_labels_move_up": "Subir {arg1}",
+  "settings_labels_move_down": "Descer {arg1}",
   "wit_tool_create_skill": "Criar um Skill",
   "wit_skill_name": "Identificador",
   "wit_skill_display_name": "Nome de exibição",

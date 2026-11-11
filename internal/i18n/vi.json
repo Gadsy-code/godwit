@@ -1,5 +1,7 @@
 {
   "@@locale": "vi",
+  "settings_labels_move_up": "Chuyển {arg1} lên",
+  "settings_labels_move_down": "Chuyển {arg1} xuống",
   "wit_tool_create_skill": "Tạo Skill",
   "wit_skill_name": "Mã định danh",
   "wit_skill_display_name": "Tên hiển thị",

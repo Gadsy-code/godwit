@@ -1,5 +1,7 @@
 {
   "@@locale": "ja",
+  "settings_labels_move_up": "{arg1} を上へ",
+  "settings_labels_move_down": "{arg1} を下へ",
   "wit_tool_create_skill": "Skill を作成",
   "wit_skill_name": "識別子",
   "wit_skill_display_name": "表示名",

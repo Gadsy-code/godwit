@@ -101,11 +101,11 @@ func (v *labelsView) list(c *ui.Context) {
 	// the list scrolls itself, so both its edges fit on screen to drag toward.
 	_, wh := c.Size()
 	h = min(h, wh/2)
-	kit.List(c, &v.order, n, func(i int) { cardListRow(c, i, n, func() { v.row(c, a.labels[i]) }) }).FillWidth().Height(h)
+	kit.List(c, &v.order, n, func(i int) { cardListRow(c, i, n, func() { v.row(c, i, a.labels[i]) }) }).FillWidth().Height(h)
 }
 
-// row is a label: grip, chip, description, built-in mark, count, edit.
-func (v *labelsView) row(c *ui.Context, l core.Label) {
+// row is the label at place i: grip, chip, description, built-in mark, count, its arrows and edit.
+func (v *labelsView) row(c *ui.Context, i int, l core.Label) {
 	t, th := theme.Of(c), c.Theme()
 	row := ui.Row(c).FillWidth().Gap(th.Space(3)).Padding(th.Space(2), th.Space(4)).Height(th.Space(12)).AlignItems(ui.Center)
 	row.Children(func() {
@@ -122,6 +122,11 @@ func (v *labelsView) row(c *ui.Context, l core.Label) {
 			kit.Badge(c, i18n.T("settings.labels.builtin")).Background(t.Background)
 		}
 		kit.Text(c, i18n.Tf("settings.labels.count", l.Count), t.Text.Sm).TextColor(t.Muted)
+		last := len(v.a.labels) - 1
+		kit.IconButton(c, "arrow-up", i18n.Tf("settings.labels.move_up", l.Name), kit.ButtonOpts{Variant: kit.Ghost, Size: kit.SizeSm, Disabled: i == 0}).
+			OnClick(func() { v.move(i, i-1) })
+		kit.IconButton(c, "arrow-down", i18n.Tf("settings.labels.move_down", l.Name), kit.ButtonOpts{Variant: kit.Ghost, Size: kit.SizeSm, Disabled: i == last}).
+			OnClick(func() { v.move(i, i+2) })
 		kit.IconButton(c, "pen-line", i18n.Tf("settings.labels.edit", l.Name), kit.ButtonOpts{Variant: kit.Ghost, Size: kit.SizeSm}).
 			OnClick(func() { v.open(l) })
 	})

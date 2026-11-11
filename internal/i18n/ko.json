@@ -1,5 +1,7 @@
 {
   "@@locale": "ko",
+  "settings_labels_move_up": "{arg1} 위로",
+  "settings_labels_move_down": "{arg1} 아래로",
   "wit_tool_create_skill": "Skill 만들기",
   "wit_skill_name": "식별자",
   "wit_skill_display_name": "표시 이름",

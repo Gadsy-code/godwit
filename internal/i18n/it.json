@@ -1,5 +1,7 @@
 {
   "@@locale": "it",
+  "settings_labels_move_up": "Sposta {arg1} su",
+  "settings_labels_move_down": "Sposta {arg1} giù",
   "wit_tool_create_skill": "Crea uno Skill",
   "wit_skill_name": "Identificatore",
   "wit_skill_display_name": "Nome visualizzato",

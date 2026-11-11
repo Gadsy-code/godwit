@@ -1,5 +1,7 @@
 {
   "@@locale": "tr",
+  "settings_labels_move_up": "{arg1} yukarı",
+  "settings_labels_move_down": "{arg1} aşağı",
   "wit_tool_create_skill": "Skill oluştur",
   "wit_skill_name": "Tanımlayıcı",
   "wit_skill_display_name": "Görünen ad",

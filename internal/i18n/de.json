@@ -1,5 +1,7 @@
 {
   "@@locale": "de",
+  "settings_labels_move_up": "{arg1} nach oben",
+  "settings_labels_move_down": "{arg1} nach unten",
   "wit_tool_create_skill": "Skill erstellen",
   "wit_skill_name": "Kennung",
   "wit_skill_display_name": "Anzeigename",
