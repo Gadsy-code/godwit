@@ -151,7 +151,7 @@ func TestSettingsProxyMode(t *testing.T) {
 	}
 	h, _ := withAccount(t)
 	p := h.openSettings("general")
-	h.resize(1280, 1600) // the group sits at the page's end; ClickAt needs it in the window
+	h.resize(1280, 2000) // the group sits at the page's end; ClickAt needs it in the window
 	h.see("网络代理")
 	h.see("使用系统网络设置中的代理")
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
