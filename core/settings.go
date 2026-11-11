@@ -60,6 +60,10 @@ type Settings struct {
 	// adding an Outlook account; off by default. Off, Graph accounts already
 	// added keep working.
 	ExperimentalGraph bool
+	// ExperimentalGmailAPI (实验性 Gmail API) offers Gmail API when adding a
+	// Gmail account with the user's own OAuth client; off by default. Off,
+	// Gmail API accounts already added keep working.
+	ExperimentalGmailAPI bool
 	// MCPSend is what godwit mcp's send_draft does (通过 MCP 发送):
 	// MCPSendOff, MCPSendConfirm (the default; "" too) or MCPSendDirect.
 	MCPSend string
