@@ -71,6 +71,9 @@ func (v *labelsView) view(c *ui.Context, p *settingsPage) {
 		},
 		func() {
 			kit.SwitchRow(c, &p.st.TintRows, i18n.T("settings.labels.tint"), i18n.T("settings.labels.tint.help"))
+		},
+		func() {
+			kit.SwitchRow(c, &p.st.RowBar, i18n.T("settings.labels.bar"), i18n.T("settings.labels.bar.help"))
 		})
 	settingsSection(c, i18n.T("settings.labels.auto"), "",
 		func() {

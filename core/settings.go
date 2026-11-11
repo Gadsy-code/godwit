@@ -105,6 +105,8 @@ type Settings struct {
 	LabelDisplay string
 	// TintRows lightly colours each mail list row with the colour of its label.
 	TintRows bool
+	// RowBar puts a solid bar of the label's colour on the left edge of each mail list row.
+	RowBar bool
 	// SidebarWidth is the page sidebars' width in DIPs, the user's drag:
 	// 0 for the default, else 240 to 480.
 	SidebarWidth int

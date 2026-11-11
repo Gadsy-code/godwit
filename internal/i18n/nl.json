@@ -1,5 +1,7 @@
 {
   "@@locale": "nl",
+  "settings_labels_bar": "Balk op lijstrijen",
+  "settings_labels_bar_help": "Een egale balk in de kleur van het label aan de linkerrand van elke rij van de maillijst",
   "settings_labels_tint": "Lijstrijen inkleuren",
   "settings_labels_tint_help": "Kleur elke rij van de maillijst licht in met de kleur van haar label",
   "wit_tool_create_skill": "Skill maken",

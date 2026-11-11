@@ -1,5 +1,7 @@
 {
   "@@locale": "tr",
+  "settings_labels_bar": "Liste satırlarında çubuk",
+  "settings_labels_bar_help": "Her posta listesi satırının sol kenarında etiketin renginde dolu bir çubuk",
   "settings_labels_tint": "Liste satırlarını renklendir",
   "settings_labels_tint_help": "Her posta listesi satırını etiketinin rengiyle hafifçe boya",
   "wit_tool_create_skill": "Skill oluştur",

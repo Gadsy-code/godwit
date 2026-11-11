@@ -49,3 +49,40 @@ func TestRowTintSetting(t *testing.T) {
 	h.openSettings("labels")
 	h.see(i18n.T("settings.labels.tint"))
 }
+
+// A row can carry a solid bar of its label's colour on its left edge (Settings.RowBar), with or
+// without the tint: it shows where the tint alone is too light to tell rows apart.
+func TestRowTintBar(t *testing.T) {
+	h, _, m := labeledMail(t)
+	h.autoLabel(m.ID, "travel") // blue
+	ls, err := h.env.Svc.ListLabels(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range ls {
+		if l.Slug == "travel" {
+			h.waitMail("the row shows its chip", func() bool { return h.tt.HasText(l.Name) })
+		}
+	}
+	st := h.app.settings
+	st.RowBar = true // the bar alone: the tint stays off
+	h.post(func() { h.app.changeSettings(st) })
+	h.drain()
+	bar := func() bool { // a strongly blue pixel in the row's left margin
+		rect, ok := h.tt.Find("Check-in open")
+		if !ok {
+			return false
+		}
+		y := int(rect.Y + rect.H/2)
+		for x := int(rect.X) - 30; x < int(rect.X); x++ {
+			if x < 0 {
+				continue
+			}
+			if px := h.tt.Image().RGBAAt(x, y); int(px.B)-int(px.R) > 90 {
+				return true
+			}
+		}
+		return false
+	}
+	h.until("a bar of the label's colour on the row's edge", func() bool { h.tt.Frame(); return bar() })
+}

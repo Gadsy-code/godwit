@@ -1,5 +1,7 @@
 {
   "@@locale": "es",
+  "settings_labels_bar": "Barra en las filas de la lista",
+  "settings_labels_bar_help": "Una barra sólida del color de la etiqueta en el borde izquierdo de cada fila de la lista",
   "settings_labels_tint": "Teñir las filas de la lista",
   "settings_labels_tint_help": "Colorear ligeramente cada fila de la lista con el color de su etiqueta",
   "wit_tool_create_skill": "Crear un Skill",

@@ -1,5 +1,7 @@
 {
   "@@locale": "fr",
+  "settings_labels_bar": "Barre sur les lignes de la liste",
+  "settings_labels_bar_help": "Une barre pleine de la couleur du libellé au bord gauche de chaque ligne de la liste",
   "settings_labels_tint": "Teinter les lignes de la liste",
   "settings_labels_tint_help": "Colorer légèrement chaque ligne de la liste avec la couleur de son libellé",
   "wit_tool_create_skill": "Créer un Skill",

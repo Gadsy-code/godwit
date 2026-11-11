@@ -1,5 +1,7 @@
 {
   "@@locale": "zh-Hant",
+  "settings_labels_bar": "列表列左側色條",
+  "settings_labels_bar_help": "在每一列的左邊緣顯示一條標籤顏色的實心色條",
   "settings_labels_tint": "為列表列著色",
   "settings_labels_tint_help": "用標籤的顏色為每一列輕輕著色",
   "wit_tool_create_skill": "建立 Skill",

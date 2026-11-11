@@ -1332,8 +1332,13 @@ func (p *mailPage) row(c *ui.Context, it mailItem) ui.Element {
 		weight = 600
 	}
 	col := ui.Column(c).Gap(th.Space(0.5)).Padding(th.Space(2.5), th.Space(2.5), th.Space(2.5), th.Space(5))
-	if tint, ok := p.a.rowTint(c, it.Labels); ok && p.a.settings.TintRows {
-		col.Background(tint) // translucent: a chosen row still shows its selection
+	if tint, bar, ok := p.a.rowTint(c, it.Labels); ok {
+		if p.a.settings.TintRows {
+			col.Background(tint) // translucent, so a chosen row still shows its selection
+		}
+		if p.a.settings.RowBar { // the bar takes the room it needs from the padding
+			col.BorderWidth(0, 0, 0, theme.RowTintBar).BorderColor(bar).Padding(th.Space(2.5), th.Space(2.5), th.Space(2.5), th.Space(5)-theme.RowTintBar)
+		}
 	}
 	return col.Children(func() {
 		if it.Unread > 0 {

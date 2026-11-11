@@ -1,5 +1,7 @@
 {
   "@@locale": "vi",
+  "settings_labels_bar": "Thanh ở dòng danh sách",
+  "settings_labels_bar_help": "Một thanh đặc có màu nhãn ở mép trái của mỗi dòng danh sách",
   "settings_labels_tint": "Tô màu dòng danh sách",
   "settings_labels_tint_help": "Tô nhẹ từng dòng của danh sách bằng màu nhãn của nó",
   "wit_tool_create_skill": "Tạo Skill",

@@ -1,5 +1,7 @@
 {
   "@@locale": "de",
+  "settings_labels_bar": "Balken an Listenzeilen",
+  "settings_labels_bar_help": "Ein farbiger Balken in der Farbe des Labels am linken Rand jeder Zeile der Mailliste",
   "settings_labels_tint": "Listenzeilen einfärben",
   "settings_labels_tint_help": "Jede Zeile der Mailliste leicht in der Farbe ihres Labels färben",
   "wit_tool_create_skill": "Skill erstellen",

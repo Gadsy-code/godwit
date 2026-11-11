@@ -1,5 +1,7 @@
 {
   "@@locale": "en",
+  "settings_labels_bar": "Bar on list rows",
+  "settings_labels_bar_help": "A solid bar of the label’s colour on the left edge of each mail list row",
   "settings_labels_tint": "Tint list rows",
   "settings_labels_tint_help": "Lightly colour each mail list row with its label’s colour",
   "wit_tool_create_skill": "Create a Skill",
