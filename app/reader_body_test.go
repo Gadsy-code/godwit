@@ -214,10 +214,9 @@ func TestReaderSwitchDuringCreate(t *testing.T) {
 		}
 	}
 	h.openThread(m.ThreadID)
+	h.until("the first page made", func() bool { return switched })
+	h.openThread(other.ThreadID) // the switch under way: waits it out
 	h.seeBody(other.ID)
-	if !switched {
-		t.Fatal("the first page was never made")
-	}
 	if h.plat.view(m.ID) != nil || h.countCalls(fmt.Sprint("CloseBodyView ", m.ID)) != 1 {
 		t.Fatalf("the old thread's page was kept: %q", h.plat.Calls())
 	}
@@ -326,7 +325,10 @@ func TestReaderScrollResetsPerThread(t *testing.T) {
 	if r.scroll.Y == 0 {
 		t.Fatal("a wheel over the body did not scroll the reader")
 	}
-	h.openThread(h.deliverOne(accs[0], coretest.Msg("carol@example.com", accs[0].Email, "Short", "other")).ThreadID)
+	other := h.deliverOne(accs[0], coretest.Msg("carol@example.com", accs[0].Email, "Short", "other"))
+	h.openThread(other.ThreadID)
+	// what showed stays until the other thread is read (#667), then goes at once
+	h.until("the other thread shown", func() bool { return r.key[0] == other.ThreadID && r.loaded })
 	if r.scroll.Y != 0 {
 		t.Fatalf("another thread starts at %v", r.scroll.Y)
 	}
@@ -548,6 +550,11 @@ func TestReaderTrustSender(t *testing.T) {
 	if err != nil || !slices.Equal(trusted, []string{"bob@example.com"}) {
 		t.Fatalf("trusted %q, %v", trusted, err)
 	}
+	// The app reads the list back later and drops the avatars it showed then:
+	// wait for that, or it may land on the next message's avatar mid-load.
+	h.settle()
+	h.advance(refreshEvery)
+	h.until("the trusted list read back", func() bool { return slices.Equal(h.app.trusted, trusted) })
 	n := h.deliverOne(acc, coretest.Msg("bob@example.com", acc.Email, "More news", "text", img))
 	h.openThread(n.ThreadID)
 	h.seeBody(n.ID)

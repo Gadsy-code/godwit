@@ -484,8 +484,18 @@ func (h *harness) deliverOne(acc core.Account, raw []byte) core.MessageSummary {
 
 // openThread opens a thread in the reader as a click on its row does.
 func (h *harness) openThread(id int64) {
+	h.t.Helper()
 	h.app.mail.open([]mailItem{{ID: id, Thread: true}}, 0)
 	h.tt.Frame()
+	// A switch shows the thread before until the new body's page reports its
+	// height (#667), which a fake page never does: its wait runs out.
+	r := h.app.mail.reader
+	h.until("the switch done", func() bool {
+		if r.prev != nil {
+			h.clock.advance(prevWait)
+		}
+		return r.next == [2]int64{} && r.prev == nil
+	})
 }
 
 // openThreadWith opens thread, where only the newest message opens, and
@@ -1449,7 +1459,7 @@ func TestReaderAvatarMoveToJunk(t *testing.T) {
 		t.Fatal("folder move lost current-message permission")
 	}
 	// A fresh reader generation drops the manual grant; moving back then loads automatically.
-	h.post(func() { r.reset(r.key); r.load() })
+	h.post(func() { r.reset(r.key); r.load(r.key) })
 	h.until("fresh automatic inbox avatar", func() bool { b = r.bodies[m.ID]; return b != nil && b.avatar != nil && !b.avatarAllow })
 	for _, role := range []string{"junk", "inbox"} {
 		folder := h.folderOf(acc, role)

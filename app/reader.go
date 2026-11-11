@@ -42,6 +42,19 @@ type reader struct {
 	why     core.ViewReason // why it is in the view shown
 	gen     uint64          // bumped per key; older results are dropped
 	readGen uint64          // bumped per thread read; only the newest read applies
+	// next is the thread being read to replace the one shown (switching):
+	// what shows stays until it is read, rather than a blank pane between
+	// (#667). Zero while none is.
+	next [2]int64
+	// prev is the thread shown before the switch, still drawn while the
+	// new one's newest body builds unseen under it, until its page reports
+	// its height (waiting) or prevStop's time is up: no blank body between
+	// (#667). Nil while none is.
+	prev     *reader
+	prevStop func()
+	// entered is whether the thread's parts were drawn: a part that comes
+	// after enters with its motion; the thread itself comes at once (#667).
+	entered bool
 	loaded  bool
 	subject string
 	msgs    []core.MessageSummary // oldest first
@@ -120,6 +133,8 @@ type msgBody struct {
 	// as the retry is Allow, which lets them load.
 	imgFailed int
 
+	timing bodyTiming // how long the body took to show (GODWIT_READER_TIMING)
+
 	unsub     core.Unsubscribe // how it unsubscribes, by its headers; none until asked
 	unsubbing bool             // its unsubscribe is under way
 	attSel    map[int64]bool   // selected attachment IDs for batch save
@@ -148,13 +163,30 @@ func (r *reader) sync(reread bool) {
 		k = [2]int64{}
 	}
 	switch {
-	case k != r.key:
+	case k == r.key && r.next != [2]int64{}: // back to the one shown before the switch was read
+		r.next = [2]int64{}
+		r.readGen++ // drops the switch's read
+		if !reread {
+			return
+		}
+	case k != r.key && (k[0] == 0 || !r.loaded):
+		r.next = [2]int64{}
+		r.dropPrev()
 		r.reset(k)
+	case k != r.key:
+		// Another thread: the one shown stays until it is read, and is
+		// replaced at once then (load). A switch while one is under way
+		// replaces it: its read is dropped.
+		if k != r.next || reread {
+			r.next = k
+			r.load(k)
+		}
+		return
 	case !reread:
 		return
 	}
 	if k[0] != 0 {
-		r.load()
+		r.load(k)
 	}
 	r.loadWhy()
 }
@@ -167,7 +199,7 @@ func (r *reader) reset(k [2]int64) {
 		b.closeView()
 	}
 	r.stopAI()
-	r.key, r.loaded, r.subject, r.msgs, r.focus = k, false, "", nil, 0
+	r.key, r.loaded, r.entered, r.subject, r.msgs, r.focus = k, false, false, "", nil, 0
 	r.threadIDs, r.labels = nil, nil
 	r.replyAsk = "" // a question is for the thread it was typed in
 	r.detailsOpen, r.detailsID, r.why = false, 0, core.ViewReason{}
@@ -177,9 +209,59 @@ func (r *reader) reset(k [2]int64) {
 	r.gen++
 }
 
-func (r *reader) load() {
+// prevWait is how long the thread before a switch stays at most, for a
+// page that never reports its height.
+const prevWait = time.Second
+
+// retire starts thread k in place of the one shown, which stays drawn as
+// prev, its pages open, until k's newest body has its height. A switch
+// while one is under way keeps the prev shown and closes the unseen pages.
+func (r *reader) retire(k [2]int64) {
+	if r.prev == nil {
+		prev := *r
+		r.prev = &prev
+		r.bodies = nil // prev's now: reset leaves its pages open
+	}
+	if r.prevStop != nil {
+		r.prevStop()
+	}
+	r.prevStop = r.p.a.after(prevWait, r.dropPrev)
+	r.reset(k)
+}
+
+// dropPrev closes the thread kept from before a switch, if any.
+func (r *reader) dropPrev() {
+	if r.prevStop != nil {
+		r.prevStop()
+		r.prevStop = nil
+	}
+	if r.prev == nil {
+		return
+	}
+	r.prev.gen++ // what it still had under way is dropped, not applied to a reader no one sees
+	for _, b := range r.prev.bodies {
+		b.stopAvatar()
+		b.closeView()
+	}
+	r.prev = nil
+}
+
+// waiting is whether the thread is read and its newest body's page is still
+// to report its height: the thread before stays drawn till then.
+func (r *reader) waiting() bool {
+	if !r.loaded || len(r.msgs) == 0 {
+		return false
+	}
+	b := r.bodies[r.msgs[len(r.msgs)-1].ID]
+	return b != nil && b.err == nil && b.height == 0
+}
+
+// load reads thread k: the one shown again, or the one to switch to
+// (r.next), which replaces what shows once read.
+func (r *reader) load(k [2]int64) {
 	r.readGen++
-	a, gen, read, k, get := r.p.a, r.gen, r.readGen, r.key, r.getThread
+	a, gen, read, get := r.p.a, r.gen, r.readGen, r.getThread
+	route := k
 	var th core.Thread
 	var labels map[int64][]core.AppliedLabel
 	a.do(func(ctx context.Context) (err error) {
@@ -198,6 +280,11 @@ func (r *reader) load() {
 	}, func(err error) {
 		if gen != r.gen || read != r.readGen {
 			return
+		}
+		if switching := r.next == route; switching { // what showed stays drawn till this one's body is sized
+			r.next = [2]int64{}
+			r.retire(route)
+			defer r.loadWhy()
 		}
 		if err != nil {
 			a.toastErr(err)
@@ -321,6 +408,7 @@ func (r *reader) loadBody(id int64) {
 		return
 	}
 	b.loading, b.err = true, nil
+	b.timing.begin()
 	b.bodyGen++
 	read := b.bodyGen
 	var m core.Message
@@ -341,6 +429,7 @@ func (r *reader) loadBody(id int64) {
 			return
 		}
 		b.msg, b.ready, b.trusted = m, true, trusted
+		b.timing.readDone()
 		b.avatarBlocked = !trusted
 		r.openView(id)
 		r.loadAvatar(id, b.avatarAllow)
@@ -455,7 +544,10 @@ func (r *reader) openView(id int64) {
 	if b == nil || !b.ready || b.err != nil || !r.open[id] || b.view != nil {
 		return
 	}
-	gen := r.gen
+	if pb := r.prev; pb != nil && pb.bodies[id] != nil && pb.bodies[id].view != nil {
+		r.dropPrev() // a message has one page: a second would share, and outlive, the first's grants
+	}
+	gen, made := r.gen, time.Now()
 	v, closeView, err := r.p.a.plat.NewBodyView(id)
 	if gen != r.gen || r.bodies[id] != b || !r.open[id] || b.view != nil || r.p.a.ctx.Err() != nil {
 		if err == nil {
@@ -468,6 +560,7 @@ func (r *reader) openView(id int64) {
 		return
 	}
 	b.view, b.close = v, closeView
+	b.timing.viewMade(made)
 	if b.allow {
 		r.p.a.plat.AllowImages(id)
 	}
@@ -486,6 +579,7 @@ func (b *msgBody) closeView() {
 // closeViews closes every page (the App closing).
 func (r *reader) closeViews() {
 	r.invalidateAvatars(true)
+	r.dropPrev()
 	for _, b := range r.bodies {
 		b.closeView()
 	}
@@ -1051,8 +1145,30 @@ func (r *reader) printMail() {
 	}
 }
 
-// view is the reading pane: the toolbar over the subject and the messages.
+// view is the reading pane: the toolbar over the subject and the messages;
+// while a switch's body builds, the thread before it, the new body under.
 func (r *reader) view(c *ui.Context) {
+	if r.prev != nil && !r.waiting() {
+		r.dropPrev()
+	}
+	if r.prev != nil {
+		r.prev.draw(c, r)
+		return
+	}
+	r.draw(c, nil)
+}
+
+// unseenBody lays out the newest body at the width it will show, unseen:
+// faded out, it is placed but cuts no hole in the window, so its page
+// builds and reports its height under the thread shown.
+func (r *reader) unseenBody(c *ui.Context) {
+	if b := r.bodies[r.msgs[len(r.msgs)-1].ID]; b != nil && b.view != nil {
+		kit.WebView(c, b.view).FillWidth().Height(c.Theme().Space(6)).Opacity(0)
+	}
+}
+
+// draw is view's pane of r, under it next's unseen body when not nil.
+func (r *reader) draw(c *ui.Context, next *reader) {
 	t, th := theme.Of(c), c.Theme()
 	col := ui.Column(c).Grow(1).Shrink(1)
 	if r.key[0] == 0 { // nothing chosen: the bird
@@ -1064,15 +1180,30 @@ func (r *reader) view(c *ui.Context) {
 	if !r.loaded || len(r.msgs) == 0 {
 		return
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyS) {
-		r.saveMail()
-	}
-	if c.Shortcut(ui.Cmd, ui.KeyP) {
-		r.printMail()
+	if next != nil {
+		// Kept on screen only while next's body builds: what it would start
+		// (a dialog, a read) would outlive it. Its pages still take clicks
+		// (readerOf).
+		col.IgnoreInput(true)
+	} else {
+		if c.Shortcut(ui.Cmd, ui.KeyS) {
+			r.saveMail()
+		}
+		if c.Shortcut(ui.Cmd, ui.KeyP) {
+			r.printMail()
+		}
 	}
 	// The toolbar and the reply bar float over the messages, which scroll
 	// under them: one sheet, the bars frosted over it.
 	col.Children(func() {
+		// next's unseen body, placed first so it stacks under r's pages, in a
+		// slot always there: what follows keeps its place in the tree, or it
+		// would go and come again with its motion (a grey block, a fade).
+		ui.Column(c).Absolute().Left(th.Space(7)).Right(th.Space(7)).Top(0).Children(func() {
+			if next != nil {
+				next.unseenBody(c)
+			}
+		})
 		r.pane = ui.Scroll(c).Grow(1).TrackScroll(&r.scroll).ScrollbarInsets(r.barTop, 0, r.barBottom).Children(func() {
 			ui.Column(c).FillWidth().Padding(r.barTop+th.Space(5), th.Space(7), r.barBottom+th.Space(5)).Children(func() {
 				ui.Column(c).FillWidth().Gap(th.Space(3.5)).Children(func() {
@@ -1203,11 +1334,19 @@ func (r *reader) renderMessages(c *ui.Context) {
 	}
 	hidden := func(i int) bool { return i < history && !r.historyShown && !r.historyOpen[r.msgs[i].ID] }
 	n := 0 // what was rendered: a hairline parts each from the one before
+	enter := func(m ui.ElementTransition) ui.ElementTransition {
+		if !r.entered {
+			m.Enter = nil
+		}
+		return m
+	}
+	defer func() { r.entered = true }()
 	// part renders one part of the thread under key, with motion; a hairline
 	// keeps to the message after it (sep).
 	part := func(sep, key any, motion ui.ElementTransition, f func()) ui.Element {
+		motion = enter(motion)
 		if n > 0 {
-			r.column(c).Key(sep).Transition(threadMotion).Children(func() { kit.Separator(c, false) })
+			r.column(c).Key(sep).Transition(enter(threadMotion)).Children(func() { kit.Separator(c, false) })
 		}
 		n++
 		// Clipped, a little larger than its content for the hovers that reach
@@ -1966,48 +2105,62 @@ func (r *reader) trustSender(from, addr string) {
 // while view is still a page the reader shows: one queued before its
 // page was closed, or replaced, is dropped.
 
+// readerOf is the reader whose bodies hold page v: the one shown, or the
+// thread kept on screen while a switch's body builds (#667).
+func (a *App) readerOf(v ui.NativeWebView) *reader {
+	if p := a.mail.reader.prev; p != nil {
+		for _, b := range p.bodies {
+			if b.view != nil && b.view == v {
+				return p
+			}
+		}
+	}
+	return a.mail.reader
+}
+
 // BodyHeight is told the height, in CSS pixels, of message's body as its
 // page laid it out: its element takes it.
 func (a *App) BodyHeight(view ui.NativeWebView, message int64, px int) {
-	if b := a.mail.reader.shown(view, message); b != nil {
+	if b := a.readerOf(view).shown(view, message); b != nil {
 		b.height = px
 		b.glass = [2]int{-1, -1} // the page listens now: what it was told before it loaded was dropped
+		logBodyTiming(&b.timing, message)
 	}
 }
 
 // BodyLink opens a link of a body's page as one of the native reader's:
 // http(s) after the confirmation, mailto in a compose window.
 func (a *App) BodyLink(view ui.NativeWebView, link string) {
-	if a.mail.reader.current(view) {
+	if a.readerOf(view).current(view) {
 		a.openLink(link)
 	}
 }
 
 // BodyNavigate goes back or forward for a body's page (⌘[ and ⌘]).
 func (a *App) BodyNavigate(view ui.NativeWebView, dir int) {
-	if a.mail.reader.current(view) {
+	if a.readerOf(view).current(view) {
 		a.Navigate(dir)
 	}
 }
 
 // BodySearch opens the search palette for a body's page (⌘F, ⌘K).
 func (a *App) BodySearch(view ui.NativeWebView) {
-	if a.mail.reader.current(view) {
+	if a.readerOf(view).current(view) {
 		a.openPalette()
 	}
 }
 
 // BodySave saves the message of a body's page (⌘S).
 func (a *App) BodySave(view ui.NativeWebView) {
-	if a.mail.reader.focusView(view) {
-		a.mail.reader.saveMail()
+	if r := a.readerOf(view); r.focusView(view) {
+		r.saveMail()
 	}
 }
 
 // BodyPrint prints the message of a body's page (⌘P).
 func (a *App) BodyPrint(view ui.NativeWebView) {
-	if a.mail.reader.focusView(view) {
-		a.mail.reader.printMail()
+	if r := a.readerOf(view); r.focusView(view) {
+		r.printMail()
 	}
 }
 
@@ -2015,8 +2168,9 @@ func (a *App) BodyPrint(view ui.NativeWebView) {
 // the start (ReaderBody.Cut), for the truncated notice, and has the remote
 // images (Remote), which hides their notice.
 func (a *App) BodyBuilt(view ui.NativeWebView, message int64, cut, remote bool) {
-	if b := a.mail.reader.shown(view, message); b != nil {
+	if b := a.readerOf(view).shown(view, message); b != nil {
 		b.cut, b.remote = cut, remote
+		b.timing.builtDone()
 		if remote {
 			b.allowErr = nil
 		}
@@ -2026,7 +2180,7 @@ func (a *App) BodyBuilt(view ui.NativeWebView, message int64, cut, remote bool) 
 // BodyImagesFailed is told n of message's images could not load:
 // the notice offers a retry.
 func (a *App) BodyImagesFailed(view ui.NativeWebView, message int64, n int) {
-	if b := a.mail.reader.shown(view, message); b != nil {
+	if b := a.readerOf(view).shown(view, message); b != nil {
 		b.imgFailed = n
 	}
 }
@@ -2034,7 +2188,7 @@ func (a *App) BodyImagesFailed(view ui.NativeWebView, message int64, n int) {
 // BodyFailed is told reading message's body with its remote images
 // failed: the notice offers a retry.
 func (a *App) BodyFailed(view ui.NativeWebView, message int64, err error) {
-	if b := a.mail.reader.shown(view, message); b != nil && b.allow {
+	if b := a.readerOf(view).shown(view, message); b != nil && b.allow {
 		b.allowErr = err
 	}
 }
