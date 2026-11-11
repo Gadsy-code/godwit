@@ -1,5 +1,7 @@
 {
   "@@locale": "ko",
+  "settings_labels_tint": "목록 행에 색조 적용",
+  "settings_labels_tint_help": "각 행을 라벨 색으로 은은하게 물들입니다",
   "wit_tool_create_skill": "Skill 만들기",
   "wit_skill_name": "식별자",
   "wit_skill_display_name": "표시 이름",

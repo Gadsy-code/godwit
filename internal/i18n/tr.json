@@ -1,5 +1,7 @@
 {
   "@@locale": "tr",
+  "settings_labels_tint": "Liste satırlarını renklendir",
+  "settings_labels_tint_help": "Her posta listesi satırını etiketinin rengiyle hafifçe boya",
   "wit_tool_create_skill": "Skill oluştur",
   "wit_skill_name": "Tanımlayıcı",
   "wit_skill_display_name": "Görünen ad",

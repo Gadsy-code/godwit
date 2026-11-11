@@ -1332,6 +1332,9 @@ func (p *mailPage) row(c *ui.Context, it mailItem) ui.Element {
 		weight = 600
 	}
 	col := ui.Column(c).Gap(th.Space(0.5)).Padding(th.Space(2.5), th.Space(2.5), th.Space(2.5), th.Space(5))
+	if tint, ok := p.a.rowTint(c, it.Labels); ok && p.a.settings.TintRows {
+		col.Background(tint) // translucent: a chosen row still shows its selection
+	}
 	return col.Children(func() {
 		if it.Unread > 0 {
 			ui.Box(c).Absolute().Left(th.Space(1.5)).Top(th.Space(4)).Size(th.Space(2), th.Space(2)).Radius(th.Space(1)).Background(t.Unread).

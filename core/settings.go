@@ -103,6 +103,8 @@ type Settings struct {
 	// LabelDisplay is how label chips show: LabelDisplayBoth (the default;
 	// "" too), LabelDisplayIcon or LabelDisplayText.
 	LabelDisplay string
+	// TintRows lightly colours each mail list row with the colour of its label.
+	TintRows bool
 	// SidebarWidth is the page sidebars' width in DIPs, the user's drag:
 	// 0 for the default, else 240 to 480.
 	SidebarWidth int

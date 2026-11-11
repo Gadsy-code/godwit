@@ -1,5 +1,7 @@
 {
   "@@locale": "en",
+  "settings_labels_tint": "Tint list rows",
+  "settings_labels_tint_help": "Lightly colour each mail list row with its label’s colour",
   "wit_tool_create_skill": "Create a Skill",
   "wit_skill_name": "Identifier",
   "wit_skill_display_name": "Display name",

@@ -1,5 +1,7 @@
 {
   "@@locale": "es",
+  "settings_labels_tint": "Teñir las filas de la lista",
+  "settings_labels_tint_help": "Colorear ligeramente cada fila de la lista con el color de su etiqueta",
   "wit_tool_create_skill": "Crear un Skill",
   "wit_skill_name": "Identificador",
   "wit_skill_display_name": "Nombre para mostrar",

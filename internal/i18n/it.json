@@ -1,5 +1,7 @@
 {
   "@@locale": "it",
+  "settings_labels_tint": "Colora le righe della lista",
+  "settings_labels_tint_help": "Colora leggermente ogni riga della lista con il colore della sua etichetta",
   "wit_tool_create_skill": "Crea uno Skill",
   "wit_skill_name": "Identificatore",
   "wit_skill_display_name": "Nome visualizzato",
