@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/godwit-email/godwit/core"
 	"github.com/godwit-email/godwit/core/coretest"
@@ -49,7 +50,8 @@ func requireNoOps(t *testing.T, s *core.Service, accountID int64) {
 }
 
 func invoice(id string) []byte {
-	return coretest.Msg("Bob <bob@example.com>", "me@example.com", "invoice "+id, "body", coretest.MessageID(id+"@example.com"))
+	return coretest.Msg("Bob <bob@example.com>", "me@example.com", "invoice "+id, "body",
+		coretest.MessageID(id+"@example.com"), coretest.Date(time.Unix(1_700_000_000, 0)))
 }
 
 func TestLocalArchiveTrashAndRestoreQueueNothing(t *testing.T) {
@@ -71,12 +73,13 @@ func TestLocalArchiveEmptyTrashDeletesOriginals(t *testing.T) {
 	dir := t.TempDir()
 	s := newServiceAt(t, dir)
 	acc, inbox := newArchive(t, s)
-	gone := importOne(t, s, acc, inbox, invoice("a"))
+	raw := invoice("a") // once: its Date is the second it was made, and the hash below must match
+	gone := importOne(t, s, acc, inbox, raw)
 	kept, err := s.ImportEML(ctx, acc.ID, inbox.ID, []string{writeEML(t, t.TempDir(), "b.eml", coretest.Msg("c@example.com", "me@example.com", "kept", "x"))})
 	require.NoError(t, err)
 	require.Equal(t, 1, kept.Imported)
 	// Files #555 extracts from an original live in parts/<content_hash>/ and go with it.
-	sum := sha256.Sum256(invoice("a"))
+	sum := sha256.Sum256(raw)
 	part := filepath.Join(dir, "archive", strconv.FormatInt(acc.ID, 10), "parts", hex.EncodeToString(sum[:]))
 	require.NoError(t, os.MkdirAll(part, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(part, "a.pdf"), []byte("pdf"), 0o644))

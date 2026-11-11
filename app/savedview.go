@@ -255,27 +255,33 @@ func (p *mailPage) viewEmpty(c *ui.Context) {
 	kit.Empty(c, kit.EmptyOpts{Icon: "inbox", Title: i18n.T("view.empty"), Desc: i18n.T("view.empty.desc")}).Margin(c.Theme().Space(8), c.Theme().Space(1))
 }
 
-// viewNav is the sidebar's 视图: an add button, and each view with its
-// icon, name, unread count and menu.
-func (p *mailPage) viewNav(c *ui.Context) {
-	t, th := theme.Of(c), c.Theme()
-	kit.SidebarCollapsible(c, &p.viewsOpen, true, func() {
+// viewNav is the sidebar's 视图: each view with its icon, name, unread
+// count and menu; its header's menu makes one (viewsMenu). It returns the header.
+func (p *mailPage) viewNav(c *ui.Context) ui.Element {
+	th := c.Theme()
+	head := kit.SidebarCollapsible(c, &p.viewsOpen, true, func() {
 		ui.Text(c, i18n.T("view.title")).SingleLine().Grow(1).Shrink(1)
-		kit.IconButton(c, "plus", i18n.T("view.new"), kit.ButtonOpts{Variant: kit.Ghost, Size: kit.SizeSm}).
-			Size(th.Space(5), th.Space(5)).TextColor(t.Muted).OnClick(func() { p.openViewEditor(newViewEditor(p)) })
 	}, func() {
 		for _, b := range p.views {
 			p.viewRow(c.Key(b.ID), b)
 		}
 	})
 	ui.Box(c).Height(th.Space(2))
+	return head
+}
+
+// viewsMenu is the views header's own menu item: make a view.
+func (p *mailPage) viewsMenu(m *ui.Menu) {
+	if m.Item(i18n.T("view.new")).Icon(menuIcon("plus")).Chosen() {
+		p.openViewEditor(newViewEditor(p))
+	}
 }
 
 func (p *mailPage) viewRow(c *ui.Context, b core.SavedView) {
 	t := theme.Of(c)
 	v := savedRoute(b.ID)
 	on := p.viewShown(v)
-	item := kit.SidebarItem(c, kit.SidebarItemOpts{Selected: on, Covered: p.viewEdit != nil, OnClick: func() { p.a.navigate(Route{Page: PageMail, View: v}) }})
+	item := kit.SidebarItem(c, kit.SidebarItemOpts{Selected: on, Covered: p.viewEdit != nil, OnClick: func() { p.a.navigate(Route{Page: PageMail, View: v}) }}).Label(b.Name)
 	item.Children(func() {
 		ui.Icon(c, icons.Get(labelIcon(b.Icon))).Size(theme.Icon, theme.Icon).Shrink(0).TextColor(t.Muted)
 		ui.Text(c, b.Name).SingleLine().Grow(1).Shrink(1)

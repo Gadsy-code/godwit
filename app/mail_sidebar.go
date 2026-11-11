@@ -130,27 +130,118 @@ func (p *mailPage) Sidebar(c *ui.Context) {
 			p.navItem(c, "outbox", i18n.T("mail.outbox"), core.View{Unified: "outbox"}, n)
 		}
 		ui.Box(c).Height(th.Space(2))
-		p.viewNav(c)
-		p.labelNav(c)
-		kit.SidebarCollapsible(c, &p.accountsOpen, true, func() {
-			ui.Text(c, i18n.T("mail.accounts")).SingleLine().Grow(1).Shrink(1)
-		}, func() {
-			for _, acc := range a.accounts {
-				p.account(c, acc)
+		order := core.SidebarOrder(a.settings)
+		for _, section := range order {
+			var head ui.Element
+			var items func(*ui.Menu)
+			switch section {
+			case "views":
+				head, items = p.viewNav(c), p.viewsMenu
+			case "labels":
+				head, items = p.labelNav(c), p.labelsMenu
+			case "accounts":
+				head, items = p.accountsNav(c), p.accountsMenu
 			}
-			kit.SidebarItem(c, kit.SidebarItemOpts{Muted: true, Small: true, OnClick: func() {
-				a.navigate(Route{Page: PageSettings})
-				a.openAddAccount()
-			}}).Children(func() {
-				ui.Icon(c, icons.Get("plus")).Size(theme.IconXs, theme.IconXs)
-				ui.Text(c, i18n.T("mail.add_account"))
-			})
-			kit.SidebarItem(c, kit.SidebarItemOpts{Muted: true, Small: true, OnClick: p.newArchive}).Children(func() {
-				ui.Icon(c, icons.Get("archive")).Size(theme.IconXs, theme.IconXs)
-				ui.Text(c, i18n.T("mail.archive.new"))
-			})
-		})
+			p.sectionHead(c, head, order, section, items)
+		}
 	})
+}
+
+// sidebarSection is a section of core.SidebarSections, as its header drags it.
+type sidebarSection string
+
+// sectionHead lets a section's header be dragged onto another's to take its
+// place, and its menu move it past the shown section above or below; either
+// saves Settings.SidebarOrder. The menu starts with the section's own items, if any.
+func (p *mailPage) sectionHead(c *ui.Context, head ui.Element, order []string, section string, items func(*ui.Menu)) {
+	i := slices.Index(order, section)
+	head.Drag(sidebarSection(section))
+	if head.Dragging() {
+		head.Opacity(0.4)
+	}
+	if v, ok := ui.DragOver[sidebarSection](head); ok && string(v) != section {
+		below := slices.Index(order, string(v)) < i // one from above lands under this header
+		accent := c.Theme().Accent
+		head.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+			y := r.Y
+			if below {
+				y += r.H
+			}
+			// As ui.List draws where dragged rows go: a dot, then the line.
+			pt.Fill(ui.Rect{X: r.X + 4, Y: y - 1, W: r.W - 4, H: 2}, accent, 1)
+			pt.Fill(ui.Rect{X: r.X, Y: y - 4, W: 8, H: 8}, accent, 4)
+		})
+	}
+	if v, ok := ui.Drop[sidebarSection](head); ok {
+		p.moveSection(order, slices.Index(order, string(v)), i)
+	}
+	up, down := -1, -1
+	for k, s := range order {
+		if s != section && p.sectionShown(s) {
+			if k < i {
+				up = k
+			} else if down < 0 {
+				down = k
+			}
+		}
+	}
+	head.ContextMenu(func(m *ui.Menu) {
+		if items != nil {
+			items(m)
+			m.Separator()
+		}
+		if m.Item(i18n.T("mail.section.up")).Disabled(up < 0).Chosen() {
+			p.moveSection(order, i, up)
+		}
+		if m.Item(i18n.T("mail.section.down")).Disabled(down < 0).Chosen() {
+			p.moveSection(order, i, down)
+		}
+	})
+}
+
+// moveSection takes the section at i out of order and puts it at to of
+// what is left, or after the one at to when that is below i, and saves it.
+func (p *mailPage) moveSection(order []string, i, to int) {
+	if i < 0 || to < 0 || i == to {
+		return
+	}
+	next := slices.Clone(order)
+	s := next[i]
+	next = slices.Insert(slices.Delete(next, i, i+1), to, s)
+	st := p.a.settings
+	st.SidebarOrder = strings.Join(next, ",")
+	p.a.changeSettings(st)
+}
+
+// sectionShown reports whether the sidebar shows the section: labels only
+// while one is on some mail.
+func (p *mailPage) sectionShown(s string) bool {
+	return s != "labels" || slices.ContainsFunc(p.a.labels, func(l core.Label) bool { return l.Count > 0 })
+}
+
+// accountsNav is the sidebar's accounts section; its header's menu adds one
+// (accountsMenu). It returns the header.
+func (p *mailPage) accountsNav(c *ui.Context) ui.Element {
+	a := p.a
+	head := kit.SidebarCollapsible(c, &p.accountsOpen, true, func() {
+		ui.Text(c, i18n.T("mail.accounts")).SingleLine().Grow(1).Shrink(1)
+	}, func() {
+		for _, acc := range a.accounts {
+			p.account(c, acc)
+		}
+	})
+	return head
+}
+
+// accountsMenu is the accounts header's own menu items: add an account, or a local archive.
+func (p *mailPage) accountsMenu(m *ui.Menu) {
+	if m.Item(i18n.T("mail.add_account")).Icon(menuIcon("plus")).Chosen() {
+		p.a.navigate(Route{Page: PageSettings})
+		p.a.openAddAccount()
+	}
+	if m.Item(i18n.T("mail.archive.new")).Icon(menuIcon("archive")).Chosen() {
+		p.newArchive()
+	}
 }
 
 // navItem is a view in the sidebar, with its icon and count.

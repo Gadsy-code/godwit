@@ -14,6 +14,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/godwit-email/godwit/backend/ews"
+	"github.com/godwit-email/godwit/backend/gmailapi"
+	"github.com/godwit-email/godwit/backend/jmap"
 	"github.com/godwit-email/godwit/backend/pop3"
 	"github.com/godwit-email/godwit/core"
 	"github.com/godwit-email/godwit/core/auth"
@@ -43,6 +45,9 @@ const (
 // testSecurity, set only by tests, replaces both servers' security: the fake
 // servers on loopback speak plaintext, which the form never offers.
 var testSecurity core.Security
+
+// testGmailAPI, set only by tests, replaces a Gmail API slot with a fake server on loopback.
+var testGmailAPI core.Server
 
 var otherProvider = auth.Provider{ID: "other", Entries: auth.IMAPSMTP(auth.Server{}, auth.Server{}, "password")}
 
@@ -86,10 +91,9 @@ type onboarding struct {
 	ewsURL               string              // the EWS URL, in place of the IMAP and SMTP servers; "" finds it by Autodiscover
 	ewsAdvanced          bool                // the EWS URL field is shown: opened, or Autodiscover found nothing
 	confirmed            map[string][]string // per lowercased email address: hosts outside its domain the user let Autodiscover send the password to
-	jmapAuth             int                 // how JMAP signs in: 0 a password, 1 an API token, with SMTP's password apart
-	sendSecret           string              // SMTP's own password, for a JMAP API token
-	showSendSecret       bool
+	jmapAuth             int                 // how JMAP signs in: 0 a password, 1 an API token
 	flowID, authURL      string
+	oauthWaiting         bool
 	oauthErr             error
 	report               core.CheckReport
 	checking, adding     bool
@@ -137,6 +141,7 @@ func (o *onboarding) leave() {
 		o.cancelFlow(o.flowID)
 		o.flowID, o.authURL = "", ""
 	}
+	o.oauthWaiting = false
 }
 
 func (o *onboarding) cancelFlow(id string) {
@@ -217,7 +222,7 @@ func (o *onboarding) secretName() string {
 	return i18n.T("onboarding.login." + loginOf(o.prov))
 }
 
-// apiToken: JMAP signs in with an API token, and SMTP with a password of its own.
+// apiToken: JMAP signs in with an API token.
 func (o *onboarding) apiToken() bool { return o.jmap() && o.jmapAuth == 1 }
 
 // scheduleDetect detects the provider of the address once typing pauses.
@@ -325,6 +330,9 @@ func (o *onboarding) choose(p auth.Provider) {
 	}
 	if p.ID != o.prov.ID { // what was typed or imported is for the provider it was given to
 		o.secret, o.client = "", clientForm{}
+		if o.proto == auth.Graph {
+			o.proto = ""
+		}
 	}
 	o.prov, o.tab = p, 0
 	o.setServers(p)
@@ -333,6 +341,11 @@ func (o *onboarding) choose(p auth.Provider) {
 	o.askEmail = !validEmail(o.email)
 	o.focusEmail = false
 	if loginOf(p) == "oauth" {
+		if o.canGraph(p) {
+			o.oauthErr = nil
+			o.goTo(stepOAuth)
+			return
+		}
 		o.startOAuth()
 		return
 	}
@@ -347,7 +360,7 @@ func (o *onboarding) choose(p auth.Provider) {
 // sign-in goes on to the check.
 func (o *onboarding) startOAuth() {
 	o.leave()
-	o.step, o.oauthErr = stepOAuth, nil
+	o.step, o.oauthWaiting, o.oauthErr = stepOAuth, true, nil
 	gen, a := o.gen, o.a
 	oauth, plat, prov, hint := a.oauth, a.plat, o.prov.ID, strings.TrimSpace(o.email)
 	var client core.OAuthClient
@@ -412,7 +425,22 @@ func (o *onboarding) pop3() bool { return o.proto == auth.POP3 && !o.oauth() }
 // ews: the account is added over EWS, its servers form says.
 func (o *onboarding) ews() bool { return o.proto == auth.EWS && !o.oauth() }
 
-// recvStep is the check's receiving step: imap, jmap, pop3 or ews.
+// canGraph: ExperimentalGraph is on and p offers Microsoft Graph (Outlook).
+func (o *onboarding) canGraph(p auth.Provider) bool {
+	return o.a.settings.ExperimentalGraph && p.Entry(auth.Graph).Protocol == auth.Graph
+}
+
+// graph: the account is added over Microsoft Graph.
+func (o *onboarding) graph() bool {
+	return o.proto == auth.Graph && o.prov.Entry(auth.Graph).Protocol == auth.Graph
+}
+
+// gmailAPI: the Gmail account is added over the Gmail REST API with the user's own OAuth client.
+func (o *onboarding) gmailAPI() bool {
+	return o.proto == auth.GmailAPI && o.prov.ID == "gmail" && o.ownClient()
+}
+
+// recvStep is the check's receiving step: imap, jmap, pop3, ews, graph or gmailapi.
 func (o *onboarding) recvStep() string {
 	switch {
 	case o.jmap():
@@ -421,15 +449,23 @@ func (o *onboarding) recvStep() string {
 		return auth.EWS
 	case o.pop3():
 		return auth.POP3
+	case o.graph():
+		return auth.Graph
+	case o.gmailAPI():
+		return auth.GmailAPI
 	}
 	return auth.IMAP
 }
 
-// checkSteps are the check's steps before it reports: an EWS account sends
-// through the server it receives from, so it has no smtp step.
+// checkSteps are the check's steps before it reports: a JMAP account sends
+// through its session (jmap_send), and an EWS, Graph or Gmail API one through
+// the server it receives from, so it has no sending step.
 func (o *onboarding) checkSteps() []core.CheckStep {
 	steps := []core.CheckStep{{Name: "settings"}, {Name: o.recvStep()}, {Name: "smtp"}}
-	if o.ews() {
+	switch {
+	case o.jmap():
+		steps[2].Name = "jmap_send"
+	case o.ews(), o.graph(), o.gmailAPI():
 		return steps[:2]
 	}
 	return steps
@@ -484,6 +520,7 @@ func (o *onboarding) input() core.AccountInput {
 		Sending:   core.Server{Host: strings.TrimSpace(o.smtpHost), Port: sp, Security: o.smtpSec}, Provider: o.prov.ID, ReceiveOnly: o.receiveOnly}
 	if o.jmap() {
 		in.Receiving, _ = jmapServer(o.jmapURL)
+		in.Sending = in.Receiving
 	}
 	if o.ews() {
 		in.Receiving = core.Server{Protocol: auth.EWS}                       // Autodiscover finds it
@@ -495,19 +532,28 @@ func (o *onboarding) input() core.AccountInput {
 	if o.pop3() {
 		in.Receiving.Protocol = auth.POP3
 	}
+	if o.graph() {
+		g := o.prov.Entry(auth.Graph)
+		in.Receiving = core.Server{Protocol: auth.Graph, Host: g.Host, Port: g.Port, Security: g.Security}
+		in.Sending = in.Receiving
+	}
+	if o.gmailAPI() {
+		in.Receiving = core.Server{Protocol: auth.GmailAPI, Host: "gmail.googleapis.com", Port: 443, Security: core.SecurityTLS}
+		if testGmailAPI.Host != "" {
+			in.Receiving = testGmailAPI
+		}
+		in.Sending = in.Receiving
+	}
 	if o.oauth() {
 		in.OAuthFlowID = o.flowID
 	} else {
 		in.Password = o.secret
 	}
 	if o.apiToken() {
-		in.Receiving.Auth, in.SendPassword = core.AuthAPIToken, o.sendSecret
+		in.Receiving.Auth, in.Sending.Auth = core.AuthAPIToken, core.AuthAPIToken
 	}
-	if testSecurity != "" && !o.ews() { // an EWS URL says its own
-		in.Sending.Security = testSecurity
-		if !o.jmap() { // a JMAP URL says its own
-			in.Receiving.Security = testSecurity
-		}
+	if testSecurity != "" && !o.ews() && !o.jmap() && !o.gmailAPI() && (!o.graph() || sysproxy.OnThisComputer(in.Receiving.Host)) { // a JMAP, EWS or Gmail API slot says its own
+		in.Receiving.Security, in.Sending.Security = testSecurity, testSecurity
 	}
 	return in
 }
@@ -578,7 +624,7 @@ func (o *onboarding) validate() (reason, next string) {
 		if _, ok := jmapServer(o.jmapURL); !ok {
 			return i18n.T("onboarding.invalid.jmap_url"), i18n.T("onboarding.next.host")
 		}
-		servers = servers[1:]
+		servers = nil
 	}
 	if o.ews() {
 		if _, ok := ewsServer(o.ewsURL); !ok && strings.TrimSpace(o.ewsURL) != "" {
@@ -596,9 +642,6 @@ func (o *onboarding) validate() (reason, next string) {
 	}
 	if o.secret == "" {
 		return i18n.Tf("onboarding.invalid.secret", o.secretName()), i18n.T("onboarding.next.secret")
-	}
-	if o.apiToken() && o.sendSecret == "" {
-		return i18n.Tf("onboarding.invalid.secret", i18n.T("onboarding.send_secret")), i18n.T("onboarding.next.secret")
 	}
 	return "", ""
 }
@@ -979,12 +1022,7 @@ func (o *onboarding) passwordView(c *ui.Context) {
 		}
 	}).Description(i18n.T("onboarding.secret.help")).LineHeight(theme.LineFor(o.secretName())) // the label's line; the description's is the same
 	secretWhitespaceHint(c, &o.secret)
-	if o.apiToken() {
-		ui.Field(c, i18n.T("onboarding.send_secret"), func() { secretInput(c, &o.sendSecret, &o.showSendSecret) }).
-			Description(i18n.T("onboarding.send_secret.help"))
-		secretWhitespaceHint(c, &o.sendSecret)
-	}
-	primary(c, i18n.T("onboarding.connect"), o.secret == "" || o.apiToken() && o.sendSecret == "" || !validEmail(o.email)).OnClick(o.connect)
+	primary(c, i18n.T("onboarding.connect"), o.secret == "" || !validEmail(o.email)).OnClick(o.connect)
 	o.manualView(c)
 }
 
@@ -1000,10 +1038,29 @@ func (o *onboarding) oauth() bool { return loginOf(o.prov) == "oauth" || o.ownCl
 
 // ownClientView asks for the user's own OAuth client in place of the password.
 func (o *onboarding) ownClientView(c *ui.Context) {
+	t := theme.Of(c)
+	if o.prov.ID == "gmail" && (o.a.settings.ExperimentalGmailAPI || o.proto == auth.GmailAPI) {
+		protos := []string{"", auth.GmailAPI}
+		labels := []string{"IMAP", i18n.T("onboarding.protocol.gmailapi")}
+		ui.Field(c, i18n.T("onboarding.protocol"), func() {
+			sel := max(slices.Index(protos, o.proto), 0)
+			kit.TabsFill(c, &sel, labels...)
+			if protos[sel] != o.proto {
+				o.proto = protos[sel]
+			}
+		}).FontSize(t.Text.Sm).TextColor(t.Muted)
+	}
 	pub := publicClient(o.prov)
+	stepsKey := "onboarding.own_client.steps"
+	if o.gmailAPI() {
+		pub = nil
+		o.client.public = false
+		stepsKey = "onboarding.own_client.steps.gmailapi"
+		kit.Text(c, i18n.T("onboarding.gmailapi.own_client_only"), t.Text.Sm).TextColor(t.Muted).LineHeight(theme.LineProse)
+	}
 	o.client.choice(c, pub)
 	if o.client.ownChosen(pub) {
-		o.hintBox(c, i18n.T("onboarding.own_client.title"), i18n.T("onboarding.own_client.steps"), i18n.T("onboarding.own_client.note"),
+		o.hintBox(c, i18n.T("onboarding.own_client.title"), i18n.T(stepsKey), i18n.T("onboarding.own_client.note"),
 			i18n.T("onboarding.own_client.help"), ownClientHelpURL)
 	}
 	o.client.view(c, o.a, i18n.T("onboarding.secret.help"), pub)
@@ -1124,16 +1181,18 @@ func (o *onboarding) serversForm(c *ui.Context) {
 			ui.Field(c, i18n.T("onboarding.jmap.login"), func() {
 				kit.TabsFill(c, &o.jmapAuth, i18n.T("onboarding.login.password"), i18n.T("onboarding.login.api_token"))
 			}).FontSize(t.Text.Sm).TextColor(t.Muted)
-		} else if o.pop3() {
-			sec := o.imapSec
-			server("pop3", &o.imapHost, &o.imapPort, &o.imapSec)
-			if o.imapSec != sec && o.imapPort == pop3Port[sec] { // the port follows the security while it is the default
-				o.imapPort = pop3Port[o.imapSec]
-			}
 		} else {
-			server("imap", &o.imapHost, &o.imapPort, &o.imapSec)
+			if o.pop3() {
+				sec := o.imapSec
+				server("pop3", &o.imapHost, &o.imapPort, &o.imapSec)
+				if o.imapSec != sec && o.imapPort == pop3Port[sec] { // the port follows the security while it is the default
+					o.imapPort = pop3Port[o.imapSec]
+				}
+			} else {
+				server("imap", &o.imapHost, &o.imapPort, &o.imapSec)
+			}
+			server("smtp", &o.smtpHost, &o.smtpPort, &o.smtpSec)
 		}
-		server("smtp", &o.smtpHost, &o.smtpPort, &o.smtpSec)
 		ui.Field(c, i18n.T("onboarding.username"), func() {
 			kit.Input(c, &o.username, kit.InputOpts{Placeholder: i18n.T("onboarding.username.placeholder")})
 		})
@@ -1148,6 +1207,20 @@ func (o *onboarding) oauthView(c *ui.Context) {
 		sub = i18n.T("onboarding.oauth.sub")
 	}
 	o.providerHeader(c, sub)
+	if o.canGraph(o.prov) || o.graph() {
+		protos := []string{"", auth.Graph}
+		ui.Field(c, i18n.T("onboarding.protocol"), func() {
+			sel := max(slices.Index(protos, o.proto), 0)
+			kit.TabsFill(c, &sel, "IMAP", i18n.T("onboarding.protocol.graph"))
+			if protos[sel] != o.proto {
+				o.proto = protos[sel]
+			}
+		}).FontSize(t.Text.Sm).TextColor(t.Muted)
+		if !o.oauthWaiting && o.oauthErr == nil {
+			primary(c, i18n.T("onboarding.own_client.signin"), false).OnClick(o.startOAuth)
+			return
+		}
+	}
 	ui.Column(c).Gap(th.Space(3)).Padding(th.Space(5)).Radius(t.Radius.Xl).Border(theme.Hairline, t.Border).BorderStyle(ui.BorderDashed).AlignItems(ui.Center).Children(func() {
 		if o.oauthErr != nil {
 			kit.Alert(c, kit.Danger, humanize(o.oauthErr), func() {
@@ -1184,18 +1257,25 @@ func (o *onboarding) checkRow(st core.CheckStep) (text, detail string, status in
 			host, sendHost := o.imapHost, o.smtpHost
 			if o.jmap() {
 				s, _ := jmapServer(o.jmapURL)
-				host = s.Host
+				host, sendHost = s.Host, s.Host
 			}
 			if o.ews() {
 				s, _ := ewsServer(cmp.Or(strings.TrimSpace(o.ewsURL), o.report.URL))
 				host, sendHost = s.Host, s.Host
+			}
+			if o.graph() {
+				g := o.prov.Entry(auth.Graph)
+				host, sendHost = g.Host, g.Host
+			}
+			if o.gmailAPI() {
+				host, sendHost = "gmail.googleapis.com", "gmail.googleapis.com"
 			}
 			detail = i18n.Tf("onboarding.check.settings."+src, host, sendHost)
 		}
 		if st.Name == auth.IMAP {
 			detail = o.foldersText()
 		}
-		if st.Name == auth.JMAP || st.Name == auth.EWS { // where the credentials went, which discovery may have moved
+		if st.Name == auth.JMAP || st.Name == auth.EWS || st.Name == auth.Graph || st.Name == auth.GmailAPI { // where the credentials went, which discovery may have moved
 			detail = i18n.Tf(k+".host", o.report.Host)
 			if f := o.foldersText(); f != "" {
 				detail += " · " + f
@@ -1208,6 +1288,9 @@ func (o *onboarding) checkRow(st core.CheckStep) (text, detail string, status in
 	reason, next := st.Detail, ""
 	if st.Name == "settings" {
 		return i18n.Tf(k+".failed", o.settingsReason(st)), o.settingsNext(), 2
+	}
+	if st.Detail == jmap.ReasonNoSubmission { // it signed in, but may not send: another token, or receive only
+		return i18n.Tf(k+".failed", i18n.T("feature.reason."+st.Detail)), i18n.T("onboarding.next.jmap_submission"), 2
 	}
 	switch kind := string(st.Kind); kind {
 	case string(core.KindConfirm): // Autodiscover waits for the user before the password leaves the domain
@@ -1234,6 +1317,9 @@ func (o *onboarding) checkRow(st core.CheckStep) (text, detail string, status in
 		}
 		if st.Detail == pop3.ReasonNoUIDL { // the server cannot be used at all, not merely misconfigured
 			reason = i18n.T("feature.reason." + st.Detail)
+		}
+		if st.Detail == gmailapi.ReasonAPIDisabled {
+			reason, next = i18n.T("feature.reason."+st.Detail), ""
 		}
 	case "proxy_unreachable", "proxy_refused", "proxy_auth":
 		reason = i18n.T("onboarding.reason." + kind)
@@ -1346,7 +1432,7 @@ func (o *onboarding) checkView(c *ui.Context) {
 			kit.Button(c, i18n.Tf("onboarding.retype", o.secretName()), kit.ButtonOpts{Size: kit.SizeLg}).PaddingX(th.Space(3.5)).OnClick(func() { o.retry(false) })
 			kit.Button(c, i18n.T("onboarding.manual"), kit.ButtonOpts{Variant: kit.Outline, Size: kit.SizeLg}).PaddingX(th.Space(3.5)).FontWeight(400).OnClick(func() { o.retry(true) })
 		})
-		if o.report.OnlySMTPFailed() { // mail can still come in: the account just never sends
+		if o.report.OnlySendingFailed() { // mail can still come in: the account just never sends
 			kit.Button(c, i18n.T("onboarding.receive_only"), kit.ButtonOpts{Variant: kit.Ghost, Size: kit.SizeLg}).PaddingX(th.Space(3.5)).FontWeight(400).
 				OnClick(func() { o.receiveOnly = true; o.goTo(stepDone) })
 		}

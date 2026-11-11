@@ -265,6 +265,29 @@ func (p *settingsPage) generalView(c *ui.Context) {
 		sel(i18n.T("settings.body_font_size"), i18n.T("settings.body_font_size.help"), func() ui.Element {
 			opts := append([]kit.Option[int]{{Value: 0, Label: i18n.T("settings.body_font_size.ui")}}, sizeOptions([]int{16, 18}, 0, cmp.Or(st.BodyFontSize, 16))...)
 			return settingSelect(c, i18n.T("settings.body_font_size"), &st.BodyFontSize, opts)
+		}),
+		sel(i18n.T("settings.list_order"), i18n.T("settings.list_order.help"), func() ui.Element {
+			cur := cmp.Or(st.ListRowOrder, core.ListRowSender)
+			el := settingSelect(c, i18n.T("settings.list_order"), &cur, []kit.Option[string]{
+				{Value: core.ListRowSender, Label: i18n.T("settings.list_order.sender")},
+				{Value: core.ListRowSubject, Label: i18n.T("settings.list_order.subject")},
+			})
+			if cur != cmp.Or(st.ListRowOrder, core.ListRowSender) {
+				st.ListRowOrder = cur
+			}
+			return el
+		}),
+		sel(i18n.T("settings.reader_width"), i18n.T("settings.reader_width.help"), func() ui.Element {
+			cur := cmp.Or(st.ReaderWidth, core.ReaderWidthNormal)
+			el := settingSelect(c, i18n.T("settings.reader_width"), &cur, []kit.Option[string]{
+				{Value: core.ReaderWidthNormal, Label: i18n.T("settings.reader_width.normal")},
+				{Value: core.ReaderWidthWide, Label: i18n.T("settings.reader_width.wide")},
+				{Value: core.ReaderWidthFull, Label: i18n.T("settings.reader_width.full")},
+			})
+			if cur != cmp.Or(st.ReaderWidth, core.ReaderWidthNormal) {
+				st.ReaderWidth = cur
+			}
+			return el
 		}))
 	settingsSection(c, i18n.T("settings.language"), "",
 		sel(i18n.T("settings.ui_language"), "", func() ui.Element {
@@ -321,6 +344,8 @@ func (p *settingsPage) labsView(c *ui.Context) {
 		kit.SwitchRow(c, &st.ExperimentalJMAP, i18n.T("settings.experimental_jmap"), i18n.T("settings.experimental_jmap.help"))
 		kit.SwitchRow(c, &st.ExperimentalEWS, i18n.T("settings.experimental_ews"), i18n.T("settings.experimental_ews.help"))
 		kit.SwitchRow(c, &st.ExperimentalPOP3, i18n.T("settings.experimental_pop3"), i18n.T("settings.experimental_pop3.help"))
+		kit.SwitchRow(c, &st.ExperimentalGraph, i18n.T("settings.experimental_graph"), i18n.T("settings.experimental_graph.help"))
+		kit.SwitchRow(c, &st.ExperimentalGmailAPI, i18n.T("settings.experimental_gmailapi"), i18n.T("settings.experimental_gmailapi.help"))
 	})
 }
 

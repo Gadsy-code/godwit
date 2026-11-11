@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sync"
 	"testing"
@@ -598,6 +599,14 @@ func TestDeleteRule(t *testing.T) {
 	assert.Zero(t, e.count(t, "SELECT count(*) FROM rule_runs"))
 	assert.Zero(t, e.count(t, "SELECT count(*) FROM rule_action_results"))
 	assert.Error(t, e.s.DeleteRule(bg, id))
+	assert.EqualError(t, e.s.SetRuleEnabled(bg, id, true), fmt.Sprintf("rule %d not found", id))
+}
+
+func TestSetRuleEnabledNotFound(t *testing.T) {
+	e := newRulesEnv(t)
+	id := e.saveRule(t, rule(RuleAction{Kind: ActionStar}), true)
+	require.NoError(t, e.s.SetRuleEnabled(bg, id, true)) // idempotent on an already-enabled rule
+	assert.EqualError(t, e.s.SetRuleEnabled(bg, 999, false), "rule 999 not found")
 }
 
 // Rules come in the order the user put them in, which names each once.
@@ -850,9 +859,6 @@ func TestRuleDailyResumes(t *testing.T) {
 // Undo pressed while the run is still going waits for it: undone in the
 // middle, the actions after would still be applied.
 func TestRuleUndoWaitsForTheRun(t *testing.T) {
-	e := newRulesEnv(t)
-	e.saveRule(t, rule(RuleAction{Kind: ActionStar}, RuleAction{Kind: ActionRead}), true)
-	e.rulesIdle(t)
 	held, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	setRulesHook(t, func(stage string) error {
@@ -861,6 +867,9 @@ func TestRuleUndoWaitsForTheRun(t *testing.T) {
 		}
 		return nil
 	})
+	e := newRulesEnv(t)
+	e.saveRule(t, rule(RuleAction{Kind: ActionStar}, RuleAction{Kind: ActionRead}), true)
+	e.rulesIdle(t)
 	e.bill(t, "a@x", "billing@aws.example", "Invoice")
 	e.sync(t)
 	<-held

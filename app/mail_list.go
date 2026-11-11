@@ -1337,12 +1337,25 @@ func (p *mailPage) row(c *ui.Context, it mailItem) ui.Element {
 			ui.Box(c).Absolute().Left(th.Space(1.5)).Top(th.Space(4)).Size(th.Space(2), th.Space(2)).Radius(th.Space(1)).Background(t.Unread).
 				Label(i18n.Tf("mail.row.unread", it.Unread))
 		}
-		ui.Row(c).Gap(th.Space(1.5)).AlignItems(ui.Center).Children(func() {
+		subject := it.Subject
+		if subject == "" {
+			subject = i18n.T("mail.no_subject")
+		}
+		subjectFirst := p.a.settings.ListRowOrder == core.ListRowSubject
+		// who is who the mail is with, its count and security mark: the line's lead, or its second line.
+		who := func() {
 			ui.Text(c, it.Who).FontWeight(weight).SingleLine().Shrink(1)
 			if it.Thread && it.Count > 1 { // how many messages the conversation holds, as the reader's header says
 				ui.Badge(c, strconv.Itoa(it.Count)).Label(i18n.Tf("reader.thread_count", it.Count))
 			}
 			securityIcon(c, p.a.settings, it.Security)
+		}
+		ui.Row(c).Gap(th.Space(1.5)).AlignItems(ui.Center).Children(func() {
+			if subjectFirst {
+				ui.Text(c, subject).FontWeight(weight).SingleLine().Shrink(1)
+			} else {
+				who()
+			}
 			ui.Spacer(c)
 			p.starButton(c, it, col.Hovered())
 			if it.Attach {
@@ -1350,11 +1363,11 @@ func (p *mailPage) row(c *ui.Context, it mailItem) ui.Element {
 			}
 			kit.Text(c, listTime(p.a.clock.Now(), it.Date), small).TextColor(t.Muted)
 		})
-		subject := it.Subject
-		if subject == "" {
-			subject = i18n.T("mail.no_subject")
+		if subjectFirst {
+			ui.Row(c).Gap(th.Space(1.5)).AlignItems(ui.Center).Children(who)
+		} else {
+			ui.Text(c, subject).FontWeight(weight).SingleLine()
 		}
-		ui.Text(c, subject).FontWeight(weight).SingleLine()
 		if icon, line := p.viewLine(it); line != "" {
 			ui.Row(c).Gap(th.Space(1)).AlignItems(ui.Center).TextColor(t.Muted).Children(func() {
 				ui.Icon(c, icons.Get(icon)).Size(theme.IconXs, theme.IconXs).Shrink(0)
@@ -1505,11 +1518,9 @@ func (p *mailPage) draft(it mailItem, mode string) {
 		if !ok {
 			return fmt.Errorf("thread %d has no messages", it.ID)
 		}
-		acc := p.accountOf(m.FolderID)
-		if acc == 0 {
-			if acc, err = folderAccount(ctx, p.a.svc, m.FolderID); err != nil {
-				return err
-			}
+		acc, err := folderAccount(ctx, p.a.svc, m.FolderID)
+		if err != nil {
+			return err
 		}
 		d, err := p.a.svc.NewDraft(ctx, acc, mode, m.ID)
 		if err != nil {

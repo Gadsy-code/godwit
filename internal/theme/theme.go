@@ -210,14 +210,16 @@ const (
 	SelectedBorder        = 2  // the border of a chosen tile
 	GripWidth             = 3  // a resize grip's line, down the middle of the panels' gap
 	GripHeight            = 56
-	RingWidth             = 3   // shadcn's focused box ring, outside its border
-	QuoteBar              = 2   // the bar left of a quote in a mail body
-	ImagePlaceholder      = 64  // an image not loaded, when its size is unknown
-	ReaderMaxWidth        = 720 // the reading pane's text column
-	AttachmentWidth       = 282 // an attachment in the reading pane, with its download button
-	DraftAttachmentWidth  = 286 // an attachment in the drafts pane
-	WitMaxWidth           = 760 // the Ask page's conversation column
-	CitationsWidth        = 320 // the Ask page's cited mail column
+	RingWidth             = 3    // shadcn's focused box ring, outside its border
+	QuoteBar              = 2    // the bar left of a quote in a mail body
+	ImagePlaceholder      = 64   // an image not loaded, when its size is unknown
+	ReaderMaxWidth        = 720  // the reading pane's text column
+	ReaderWideMaxWidth    = 960  // the same, as the "wide" reading width has it
+	ReaderFullMaxWidth    = 4096 // and with no practical limit: the pane's own width
+	AttachmentWidth       = 282  // an attachment in the reading pane, with its download button
+	DraftAttachmentWidth  = 286  // an attachment in the drafts pane
+	WitMaxWidth           = 760  // the Ask page's conversation column
+	CitationsWidth        = 320  // the Ask page's cited mail column
 )
 
 // BoldWeight is the font weight of bold text in mail bodies and the editor.

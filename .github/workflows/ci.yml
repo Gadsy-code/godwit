@@ -26,6 +26,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       client: ${{ steps.paths.outputs.client }}
+      linux_1: ${{ steps.paths.outputs.linux_1 }}
+      linux_2: ${{ steps.paths.outputs.linux_2 }}
+      linux_3: ${{ steps.paths.outputs.linux_3 }}
+      m5max_1: ${{ steps.paths.outputs.m5max_1 }}
+      m5max_2: ${{ steps.paths.outputs.m5max_2 }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -36,7 +41,31 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          RUNNER_CHECK_TOKEN: ${{ secrets.RUNNER_CHECK_TOKEN }}
         run: |
+          idle=0
+          m5=0
+          if [[ -n "$RUNNER_CHECK_TOKEN" && "$HEAD_REPO" == "$GITHUB_REPOSITORY" ]]; then
+            runners=$(GH_TOKEN="$RUNNER_CHECK_TOKEN" gh api "repos/$GITHUB_REPOSITORY/actions/runners" 2>/dev/null || echo '{"runners":[]}')
+            idle=$(printf '%s' "$runners" | jq '[.runners[] | select(.status=="online" and .busy==false and ([.labels[].name] | index("Linux")) and ([.labels[].name] | index("X64")) and (([.labels[].name] | index("m5max")) | not))] | length' 2>/dev/null || echo 0)
+            m5=$(printf '%s' "$runners" | jq '[.runners[] | select(.status=="online" and .busy==false and ([.labels[].name] | index("m5max")))] | length' 2>/dev/null || echo 0)
+          fi
+          for slot in 1 2 3; do
+            if ((idle >= slot)); then
+              echo "linux_${slot}=[\"self-hosted\",\"linux\",\"x64\"]" >> "$GITHUB_OUTPUT"
+            else
+              echo "linux_${slot}=\"ubuntu-latest\"" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          for slot in 1 2; do
+            if ((m5 >= slot)); then
+              echo "m5max_${slot}=[\"self-hosted\",\"linux\",\"m5max\"]" >> "$GITHUB_OUTPUT"
+            else
+              echo "m5max_${slot}=\"ubuntu-latest\"" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "client=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -63,22 +92,36 @@ jobs:
   test:
     needs: changes
     if: needs.changes.outputs.client == 'true'
+    name: test (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - name: ubuntu-latest
+            os: ${{ fromJSON(needs.changes.outputs.linux_3) }}
+          - name: macos-latest
+            os: macos-latest
+          - name: windows-latest
+            os: windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Exclude Go temp from Defender
+      - name: Exclude Go temp and workspace from Defender
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Add-MpPreference -ExclusionPath $env:TEMP
+        run: Add-MpPreference -ExclusionPath $env:TEMP, $env:RUNNER_TEMP, $env:GITHUB_WORKSPACE
       - uses: actions/checkout@v7
+      - name: Ensure Linux UI test libraries on self-hosted runner
+        if: runner.environment == 'self-hosted'
+        run: |
+          dpkg -s libpangocairo-1.0-0 fonts-dejavu-core fonts-noto-cjk >/dev/null 2>&1 ||
+            (sudo apt-get update && sudo apt-get install -y --no-install-recommends libpangocairo-1.0-0 fonts-dejavu-core fonts-noto-cjk)
       - uses: jdx/mise-action@v5
       - id: go-cache
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: echo "dir=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
+        if: runner.environment == 'github-hosted'
         with:
           path: ${{ steps.go-cache.outputs.dir }}
           # Job id so test and package do not overwrite one immutable entry.
@@ -107,29 +150,62 @@ jobs:
         env:
           CGO_ENABLED: "0"
       - name: test (no cgo)
-        # Keep wall-clock performance checks from competing with other packages.
-        run: go test -p 1 -count=1 ./...
+        shell: bash
         env:
           CGO_ENABLED: "0"
+        run: |
+          go test -count=1 $(go list ./... | grep -vE '/godwit/(app|core|webui|internal/richtext)$')
+          # Keep wall-clock performance checks from competing with other packages.
+          go test -p 1 -count=1 ./internal/richtext
+          # core, app and webui have no t.Parallel; run 4 worker processes so all cores stay busy.
+          for pkg in ./core ./app ./webui; do
+            bin="$RUNNER_TEMP/$(basename "$pkg").test.exe"
+            go test -c -o "$bin" "$pkg"
+            tests=$("$bin" -test.list . | tr -d '\r' | grep '^Test')
+            pids=()
+            for w in 0 1 2 3; do
+              pat=$(printf '%s\n' "$tests" | awk -v n=4 -v i="$w" 'NR % n == i % n' | paste -sd '|' -)
+              (cd "$pkg" && "$bin" -test.count=1 -test.timeout=20m -test.run="^($pat)\$") &
+              pids+=($!)
+            done
+            rc=0
+            for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
+            ((rc == 0)) || exit 1
+          done
 
-  # The UI suite (app) runs its tests one after another and renders every
-  # frame under race instrumentation, ~15 min on one runner; split it by test.
-  # Shard 0 races every other package.
+  # The UI suite (app) and core run their tests one after another in a single
+  # process; split core across shards 0 and 5, app across shards 1..4, and run
+  # 4 worker processes per runner.
   race:
     needs: changes
     if: needs.changes.outputs.client == 'true'
+    name: race (${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4]
-    runs-on: ubuntu-latest
+        include:
+          - shard: 0
+            os: ${{ fromJSON(needs.changes.outputs.m5max_1) }}
+          - shard: 1
+            os: ubuntu-latest
+          - shard: 2
+            os: ubuntu-latest
+          - shard: 3
+            os: ${{ fromJSON(needs.changes.outputs.m5max_2) }}
+          - shard: 4
+            os: ubuntu-latest
+          - shard: 5
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
       - id: go-cache
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: echo "dir=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
+        if: runner.environment == 'github-hosted'
         with:
           path: ${{ steps.go-cache.outputs.dir }}
           key: ${{ runner.os }}-gocache-${{ github.job }}-${{ hashFiles('go.sum') }}
@@ -141,29 +217,56 @@ jobs:
           SHARD: ${{ matrix.shard }}
           APP_SHARDS: 4
         run: |
+          run_workers() {
+            local pkg=$1 shards=$2 idx=$3
+            local bin="$RUNNER_TEMP/$(basename "$pkg").test"
+            go test -race -c -o "$bin" "$pkg"
+            local tests
+            tests=$("$bin" -test.list . | grep '^Test' | awk -v n="$shards" -v i="$idx" 'NR % n == i % n')
+            local pids=()
+            for w in 0 1 2 3; do
+              local pat
+              pat=$(printf '%s\n' "$tests" | awk -v n=4 -v i="$w" 'NR % n == i % n' | paste -sd '|' -)
+              (cd "$pkg" && "$bin" -test.count=1 -test.timeout=20m -test.run="^($pat)\$") &
+              pids+=($!)
+            done
+            local rc=0
+            for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
+            return "$rc"
+          }
           if [[ "$SHARD" == 0 ]]; then
-            go test -race -count=1 -timeout 30m $(go list ./... | grep -v '/godwit/app$')
-            exit
+            go test -race -count=1 -timeout 30m $(go list ./... | grep -vE '/godwit/(app|core|webui)$')
+            run_workers ./webui 1 0
+            run_workers ./core 2 0
+          elif [[ "$SHARD" == 5 ]]; then
+            run_workers ./core 2 1
+          else
+            run_workers ./app "$APP_SHARDS" "$SHARD"
           fi
-          tests=$(go test -list . ./app | grep '^Test' | awk -v n="$APP_SHARDS" -v i="$SHARD" 'NR % n == i % n' | paste -sd '|' -)
-          go test -race -count=1 -timeout 20m -run "^($tests)\$" ./app
 
   # Windows packages in the msix job below, which builds it anyway.
   package:
     needs: changes
     if: needs.changes.outputs.client == 'true'
+    name: package (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - name: ubuntu-latest
+            os: ${{ fromJSON(needs.changes.outputs.linux_2) }}
+          - name: macos-latest
+            os: macos-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
       - id: go-cache
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: echo "dir=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
+        if: runner.environment == 'github-hosted'
         with:
           path: ${{ steps.go-cache.outputs.dir }}
           key: ${{ runner.os }}-gocache-${{ github.job }}-${{ hashFiles('go.sum') }}
@@ -209,10 +312,12 @@ jobs:
   web:
     needs: changes
     if: needs.changes.outputs.client == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.linux_1) }}
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
+      - if: runner.environment == 'self-hosted'
+        run: mise use -g node@26
       - run: mise run web:check
       - name: pi bundle is current
         run: mise run ai:bundle && git diff --exit-code -- core/ai/pi/engine.js

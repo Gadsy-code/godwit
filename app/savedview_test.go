@@ -37,7 +37,7 @@ func (h *harness) groupOf(subject string) string {
 	return ""
 }
 
-// TestViewCreateFromSidebar: the add button opens the editor, the preview
+// TestViewCreateFromSidebar: the views header's 新建视图 opens the editor, the preview
 // follows the conditions, and 创建 shows the view with its mail grouped.
 func TestViewCreateFromSidebar(t *testing.T) {
 	h, accs := mailHarness(t, nil, "alice@example.com")
@@ -46,7 +46,7 @@ func TestViewCreateFromSidebar(t *testing.T) {
 	h.put(accs[0], "INBOX", coretest.Msg("ben@other.example", "alice@example.com", "unrelated", "z"))
 	h.syncNow(accs[0])
 
-	h.click(i18n.T("view.new"))
+	h.headerMenu(i18n.T("view.title"), i18n.T("view.new"))
 	h.see(i18n.T("view.problem.name"))
 	if !h.tt.HasText(i18n.T("view.editor.create")) {
 		t.Fatal("no create button")
@@ -172,7 +172,7 @@ func TestViewWhyAndRemove(t *testing.T) {
 	}
 	h.savedViewNamed("Acme")
 	h.click("Acme")
-	h.waitMail("the row", func() bool { return len(h.items()) == 1 })
+	h.waitMail("the row", func() bool { return !h.app.mail.loading && len(h.items()) == 1 })
 	h.app.mail.open(h.items(), 0)
 	h.see(i18n.T("view.band.unreplied"))
 	h.see("Acme" + "：")
@@ -248,7 +248,7 @@ func TestViewRefreshesWithTime(t *testing.T) {
 	}
 	h.savedViewNamed("Acme")
 	h.click("Acme")
-	h.waitMail("the row", func() bool { return len(h.items()) == 1 })
+	h.waitMail("the row", func() bool { return !h.app.mail.loading && len(h.items()) == 1 })
 	before := h.app.mail.gen
 	h.advance(time.Minute)
 	if h.app.mail.gen != before {
@@ -429,7 +429,7 @@ func TestViewRefreshesAtMidnight(t *testing.T) {
 	}
 	h.savedViewNamed("Acme")
 	h.click("Acme")
-	h.waitMail("the row", func() bool { return len(h.items()) == 1 })
+	h.waitMail("the row", func() bool { return !h.app.mail.loading && len(h.items()) == 1 })
 	now := h.clock.Now()
 	y, m, d := now.Date()
 	for now.Add(viewRefreshEvery).Before(time.Date(y, m, d+1, 0, 0, 0, 0, now.Location())) {

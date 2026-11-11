@@ -484,8 +484,18 @@ func (h *harness) deliverOne(acc core.Account, raw []byte) core.MessageSummary {
 
 // openThread opens a thread in the reader as a click on its row does.
 func (h *harness) openThread(id int64) {
+	h.t.Helper()
 	h.app.mail.open([]mailItem{{ID: id, Thread: true}}, 0)
 	h.tt.Frame()
+	// A switch shows the thread before until the new body's page reports its
+	// height (#667), which a fake page never does: its wait runs out.
+	r := h.app.mail.reader
+	h.until("the switch done", func() bool {
+		if r.prev != nil {
+			h.clock.advance(prevWait)
+		}
+		return r.next == [2]int64{} && r.prev == nil
+	})
 }
 
 // openThreadWith opens thread, where only the newest message opens, and
@@ -986,6 +996,10 @@ func TestViewInBrowserHasCSP(t *testing.T) {
 	if !strings.Contains(s, csp) || strings.Contains(strings.ToLower(s), "<script") || !strings.Contains(s, "Shown in a browser") {
 		t.Fatalf("file:\n%s", s)
 	}
+	h.app.Close()
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Fatalf("the browser file's temp dir outlived Close: %v", err)
+	}
 }
 
 func TestReaderReplyCreatesDraft(t *testing.T) {
@@ -1445,7 +1459,7 @@ func TestReaderAvatarMoveToJunk(t *testing.T) {
 		t.Fatal("folder move lost current-message permission")
 	}
 	// A fresh reader generation drops the manual grant; moving back then loads automatically.
-	h.post(func() { r.reset(r.key); r.load() })
+	h.post(func() { r.reset(r.key); r.load(r.key) })
 	h.until("fresh automatic inbox avatar", func() bool { b = r.bodies[m.ID]; return b != nil && b.avatar != nil && !b.avatarAllow })
 	for _, role := range []string{"junk", "inbox"} {
 		folder := h.folderOf(acc, role)
@@ -1520,9 +1534,22 @@ func TestReaderSaveAndPrint(t *testing.T) {
 	tmp := t.TempDir()
 	savePath := filepath.Join(tmp, "test-saved.eml")
 
+	// Cancelling the save dialog writes nothing and does not toast saved.
+	h.tt.Key(ui.Cmd, ui.KeyS)
+	h.queued("cancelled save callback", 1)
+	h.drain()
+	h.tt.Frame()
+	if got := h.callArg("SaveFile"); !strings.HasSuffix(got, ".eml") {
+		t.Fatalf("expected .eml default name, got %q", got)
+	}
+	if h.tt.HasText(i18n.T("reader.saved")) {
+		t.Fatal("cancelling SaveFile toasted reader.saved")
+	}
+
 	// 1. Save in the toolbar
 	h.plat.mu.Lock()
 	h.plat.savePath = savePath
+	h.plat.calls = nil
 	h.plat.mu.Unlock()
 
 	// Save and print sit in the toolbar's more menu.
@@ -1543,6 +1570,7 @@ func TestReaderSaveAndPrint(t *testing.T) {
 		data, err := os.ReadFile(savePath)
 		return err == nil && len(data) > 0
 	})
+	h.see(i18n.T("reader.saved"))
 
 	// 2. Print in the toolbar
 	choose(i18n.T("reader.print"))
@@ -1682,6 +1710,7 @@ func TestReaderRecipientsOneAccount(t *testing.T) {
 	if _, err := h.env.Svc.UpdateAccount(context.Background(), accs[0].ID, core.AccountPatch{Alias: &alias}); err != nil {
 		t.Fatal(err)
 	}
+	h.app.load()
 	h.waitMail("the alias", func() bool { return h.app.accounts[0].Alias == alias })
 	if s := r.recipients(got); s != "发给 Peter 等 1 人" {
 		t.Fatalf("one account with alias: %q", s)
