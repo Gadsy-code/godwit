@@ -1,5 +1,9 @@
 {
   "@@locale": "it",
+  "settings_remote_images_keep": "Conserva le immagini inutilizzate",
+  "settings_remote_images_keep_help": "Le immagini nella cache non aperte da questo tempo vengono eliminate. Gli allegati non vengono mai toccati. Un vecchio messaggio le carica di nuovo se il mittente le ha ancora.",
+  "settings_remote_images_keep_forever": "Finché la cache non è piena",
+  "settings_remote_images_keep_days": "{arg1} giorni",
   "mail_section_up": "Sposta su",
   "mail_section_down": "Sposta giù",
   "settings_list_order": "Righe della lista mail",

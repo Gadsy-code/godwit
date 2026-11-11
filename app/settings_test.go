@@ -1913,3 +1913,20 @@ func TestUpdateCard(t *testing.T) {
 	h.advance(latestEvery)
 	h.until("the card gone", func() bool { h.tt.Frame(); return !h.tt.HasText("重启以更新") })
 }
+
+// The remote images page lets the user keep unused cached images for a while, or until the cache is full.
+func TestImageRetentionRow(t *testing.T) {
+	h, _ := mailHarness(t, nil, "alice@example.com")
+	p := h.app.pages[PageSettings].(*settingsPage)
+	for days, want := range map[int]string{0: i18n.T("settings.remote_images.keep.forever"), 14: i18n.Tf("settings.remote_images.keep.days", 14)} {
+		p.st = h.app.settings
+		p.st.ImageRetentionDays = days
+		tt := ui.NewTester(func(c *ui.Context) { theme.Apply(c, theme.Light()); p.remoteImagesView(c) }, 1100, 800)
+		text := strings.Join(tt.Texts(), "|")
+		for _, w := range []string{i18n.T("settings.remote_images.keep"), want} {
+			if !strings.Contains(text, w) {
+				t.Errorf("%d days: %q is not on the page: %q", days, w, text)
+			}
+		}
+	}
+}

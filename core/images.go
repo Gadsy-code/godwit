@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/godwit-email/godwit/core/events"
 	gomail "github.com/godwit-email/godwit/core/mail"
@@ -146,4 +147,40 @@ func (s *Service) prefetchImages(ctx context.Context, message int64) {
 			total += int64(len(img.Data))
 		}
 	}
+}
+
+// imageRetentionEvery is how often the cached images are checked against
+// Settings.ImageRetentionDays, once at start and then on this beat.
+const imageRetentionEvery = 6 * time.Hour
+
+// startImageRetention deletes the cached remote images that have gone unread for
+// Settings.ImageRetentionDays, when the user set one.
+func (s *Service) startImageRetention() {
+	ctx, end, err := s.begin(context.Background(), 0)
+	if err != nil {
+		return
+	}
+	go func() {
+		defer end()
+		t := time.NewTicker(imageRetentionEvery)
+		defer t.Stop()
+		for {
+			s.pruneImageCache(ctx)
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+	}()
+}
+
+// pruneImageCache deletes the images unread for the retention the settings name;
+// none when it is 0.
+func (s *Service) pruneImageCache(ctx context.Context) int {
+	st, err := s.loadSettings(ctx)
+	if err != nil || st.ImageRetentionDays <= 0 {
+		return 0
+	}
+	return s.images.PruneUnused(time.Now().AddDate(0, 0, -st.ImageRetentionDays))
 }

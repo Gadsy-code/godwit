@@ -1,5 +1,9 @@
 {
   "@@locale": "de",
+  "settings_remote_images_keep": "Ungenutzte Bilder behalten",
+  "settings_remote_images_keep_help": "Zwischengespeicherte Bilder, die so lange nicht geöffnet wurden, werden gelöscht. Anhänge bleiben unberührt. Eine alte Nachricht lädt sie erneut, wenn der Absender sie noch hat.",
+  "settings_remote_images_keep_forever": "Bis der Cache voll ist",
+  "settings_remote_images_keep_days": "{arg1} Tage",
   "mail_section_up": "Nach oben",
   "mail_section_down": "Nach unten",
   "settings_list_order": "Zeilen der Mailliste",

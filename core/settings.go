@@ -112,6 +112,10 @@ type Settings struct {
 	// LabelDisplay is how label chips show: LabelDisplayBoth (the default;
 	// "" too), LabelDisplayIcon or LabelDisplayText.
 	LabelDisplay string
+	// ImageRetentionDays deletes a cached remote image that has gone unread this
+	// many days: 0 keeps it until the cache is full, then evicts the least
+	// recently used (MaxBytes). Attachments are not in that cache.
+	ImageRetentionDays int
 	// SidebarOrder is the mail sidebar's sections, top to bottom, as a comma-separated
 	// permutation of SidebarSections ("" is the default, views, labels, accounts).
 	SidebarOrder string
@@ -185,6 +189,9 @@ const (
 	LabelDisplayIcon = "icon"
 	LabelDisplayText = "text"
 )
+
+// MaxImageRetentionDays bounds Settings.ImageRetentionDays.
+const MaxImageRetentionDays = 365
 
 // SidebarSections are the mail sidebar's movable sections, in the default order.
 var SidebarSections = []string{"views", "labels", "accounts"}
@@ -272,6 +279,8 @@ func (st Settings) validate(kept []mask.Rule) error {
 		return fmt.Errorf("invalid reply language mode %q", st.ReplyLanguage)
 	case !in(st.LabelDisplay, "", LabelDisplayBoth, LabelDisplayIcon, LabelDisplayText):
 		return fmt.Errorf("invalid label display %q", st.LabelDisplay)
+	case st.ImageRetentionDays < 0 || st.ImageRetentionDays > MaxImageRetentionDays:
+		return fmt.Errorf("image retention must be between 0 and %d days", MaxImageRetentionDays)
 	case st.SidebarOrder != "" && !validSidebarOrder(st.SidebarOrder):
 		return fmt.Errorf("invalid sidebar order %q", st.SidebarOrder)
 	case !in(st.ListRowOrder, "", ListRowSender, ListRowSubject):

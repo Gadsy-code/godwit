@@ -1,5 +1,9 @@
 {
   "@@locale": "ja",
+  "settings_remote_images_keep": "未使用の画像を保持",
+  "settings_remote_images_keep_help": "この期間開かれなかったキャッシュ済みの画像は削除されます。添付ファイルは削除されません。古いメッセージは、送信者側にまだあれば再読み込みされます。",
+  "settings_remote_images_keep_forever": "キャッシュがいっぱいになるまで",
+  "settings_remote_images_keep_days": "{arg1}日",
   "mail_section_up": "上へ",
   "mail_section_down": "下へ",
   "settings_list_order": "メール一覧の行",

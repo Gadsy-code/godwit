@@ -1,5 +1,9 @@
 {
   "@@locale": "es",
+  "settings_remote_images_keep": "Conservar imágenes sin usar",
+  "settings_remote_images_keep_help": "Las imágenes en caché que no se abren durante este tiempo se eliminan. Los adjuntos no se tocan nunca. Un mensaje antiguo las vuelve a cargar si el remitente aún las tiene.",
+  "settings_remote_images_keep_forever": "Hasta que la caché esté llena",
+  "settings_remote_images_keep_days": "{arg1} días",
   "mail_section_up": "Subir",
   "mail_section_down": "Bajar",
   "settings_list_order": "Filas de la lista de correo",

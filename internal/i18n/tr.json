@@ -1,5 +1,9 @@
 {
   "@@locale": "tr",
+  "settings_remote_images_keep": "Kullanılmayan görselleri sakla",
+  "settings_remote_images_keep_help": "Bu süre boyunca açılmayan önbellekteki görseller silinir. Ekler asla silinmez. Eski bir ileti, gönderende hâlâ varsa onları yeniden yükler.",
+  "settings_remote_images_keep_forever": "Önbellek dolana kadar",
+  "settings_remote_images_keep_days": "{arg1} gün",
   "mail_section_up": "Yukarı taşı",
   "mail_section_down": "Aşağı taşı",
   "settings_list_order": "Posta listesi satırları",

@@ -1,5 +1,9 @@
 {
   "@@locale": "ru",
+  "settings_remote_images_keep": "Хранить неиспользуемые изображения",
+  "settings_remote_images_keep_help": "Изображения в кеше, не открывавшиеся так долго, удаляются. Вложения не затрагиваются. Старое письмо загрузит их снова, если они ещё есть у отправителя.",
+  "settings_remote_images_keep_forever": "Пока кеш не заполнится",
+  "settings_remote_images_keep_days": "{arg1} дней",
   "mail_section_up": "Выше",
   "mail_section_down": "Ниже",
   "settings_list_order": "Строки списка писем",

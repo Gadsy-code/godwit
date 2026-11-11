@@ -1,5 +1,9 @@
 {
   "@@locale": "fr",
+  "settings_remote_images_keep": "Garder les images inutilisées",
+  "settings_remote_images_keep_help": "Les images en cache non ouvertes depuis ce délai sont supprimées. Les pièces jointes ne sont jamais touchées. Un ancien message les recharge si son expéditeur les a encore.",
+  "settings_remote_images_keep_forever": "Jusqu’à ce que le cache soit plein",
+  "settings_remote_images_keep_days": "{arg1} jours",
   "mail_section_up": "Monter",
   "mail_section_down": "Descendre",
   "settings_list_order": "Lignes de la liste des mails",

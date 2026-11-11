@@ -371,6 +371,7 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 	}
 	s.startJanitor()
 	s.startReclaim()
+	s.startImageRetention()
 	if err := s.startRules(ctx); err != nil {
 		s.Close()
 		return nil, err
