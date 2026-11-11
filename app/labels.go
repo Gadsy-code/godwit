@@ -163,6 +163,14 @@ func (p *mailPage) labelNav(c *ui.Context) ui.Element {
 	return head
 }
 
+// labelsMenu is the labels header's own menu item: make a label, in Settings › Labels.
+func (p *mailPage) labelsMenu(m *ui.Menu) {
+	if m.Item(i18n.T("settings.labels.new")).Icon(menuIcon("plus")).Chosen() {
+		p.a.navigate(Route{Page: PageSettings, Settings: "labels"})
+		p.a.pages[PageSettings].(*settingsPage).labels.open(core.Label{Color: "gray", Icon: "folder-3"})
+	}
+}
+
 // goneLabel reports a route to the view of a label that no longer exists.
 func (a *App) goneLabel(r Route) bool {
 	if r.Page != PageMail || r.View.LabelID == 0 || !a.loaded {

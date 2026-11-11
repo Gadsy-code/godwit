@@ -128,7 +128,7 @@ func TestSidebarAccountsAndViews(t *testing.T) {
 	h.waitMail("both accounts and their mail", func() bool {
 		return h.tt.HasText("Work") && h.tt.HasText("carol@example.com") && h.app.mail.inboxUnread() == 2
 	})
-	for _, s := range []string{"写邮件", "全部收件箱", "已标星", "添加账户", "2"} {
+	for _, s := range []string{"写邮件", "全部收件箱", "已标星", "2"} {
 		h.see(s)
 	}
 	// Folders by role: inbox, flagged, sent, archive, trash (the fake server has no drafts or junk).
@@ -180,7 +180,7 @@ func TestSidebarAccountsAndViews(t *testing.T) {
 	if v := h.app.route.View; v.FolderID != h.folderOf(accs[1], "archive").ID {
 		t.Fatalf("view %+v", v)
 	}
-	h.click("添加账户")
+	h.headerMenu(i18n.T("mail.accounts"), "添加账户")
 	if h.app.route.Page != PageSettings || h.app.addAccount == nil {
 		t.Fatalf("route %+v, sheet %v", h.app.route, h.app.addAccount != nil)
 	}

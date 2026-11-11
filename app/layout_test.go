@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"testing"
 
 	"github.com/godwit-email/godwit/core"
@@ -15,6 +16,20 @@ func (h *harness) setLayout(f func(*core.Settings)) {
 	st := h.app.settings
 	f(&st)
 	h.post(func() { h.app.changeSettings(st) })
+	h.drain()
+	h.tt.Frame()
+}
+
+// headerMenu chooses item in the menu of the sidebar section headed header.
+func (h *harness) headerMenu(header, item string) {
+	h.t.Helper()
+	h.until("the header "+header, func() bool { _, ok := h.tt.Find(header); return ok })
+	if err := h.tt.RightClick(header); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := h.tt.ChooseMenuItem(item); err != nil {
+		h.t.Fatal(err)
+	}
 	h.drain()
 	h.tt.Frame()
 }
@@ -106,19 +121,24 @@ func TestSidebarSectionMenu(t *testing.T) {
 	h, _ := mailHarness(t, nil, "alice@example.com")
 	views, accounts := i18n.T("view.title"), i18n.T("mail.accounts")
 	h.top(views)
-	if err := h.tt.RightClick(views); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.tt.ChooseMenuItem(i18n.T("mail.section.down")); err != nil {
-		t.Fatal(err)
-	}
+	h.headerMenu(views, i18n.T("mail.section.down"))
 	h.until("the views under the accounts", func() bool { return h.app.settings.SidebarOrder == "labels,accounts,views" })
 	h.until("the views drawn under", func() bool { return h.top(accounts) < h.top(views) })
-	if err := h.tt.RightClick(views); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.tt.ChooseMenuItem(i18n.T("mail.section.up")); err != nil {
-		t.Fatal(err)
-	}
+	h.headerMenu(views, i18n.T("mail.section.up"))
 	h.until("the views back on top", func() bool { return h.app.settings.SidebarOrder == "labels,views,accounts" })
+}
+
+// The labels header's 新建标签 opens Settings › Labels with the new label's dialog.
+func TestSidebarLabelsMenuNew(t *testing.T) {
+	h, accs := mailHarness(t, nil, "alice@example.com")
+	m := h.deliverOne(accs[0], coretest.Msg("bob@example.com", accs[0].Email, "Invoice", "text"))
+	if err := h.env.Svc.SetLabel(context.Background(), []int64{m.ID}, h.labels()[1].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	h.post(h.app.load)
+	h.headerMenu(i18n.T("mail.labels"), i18n.T("settings.labels.new"))
+	if h.app.route.Settings != "labels" {
+		t.Fatalf("route %+v", h.app.route)
+	}
+	h.see(i18n.T("settings.labels.dialog.new"))
 }
