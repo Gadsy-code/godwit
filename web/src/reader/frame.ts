@@ -203,12 +203,18 @@ function stepTextState(el: Element, s: TextState): TextState {
   const visHidden =
     vis === "hidden" || vis === "collapse" ? true : vis === "visible" ? false : s.visHidden;
   const fs = lastStyleValue(st, "font-size");
-  const hasFontAttr = el.tagName === "FONT" && el.hasAttribute("size");
+  // HTML <font size="..."> clamps valid numeric values to 1..7 (x-small..xxx-large), never 0 px.
+  const hasNumericFontSizeAttr =
+    el.tagName === "FONT" && /^[+-]?\d+/.test((el.getAttribute("size") ?? "").trim());
   const zeroFont =
     fs !== null
       ? /^0(?:\.0+)?(?:[a-z%]+)?$/.test(fs)
-      : hasFontAttr
-        ? el.getAttribute("size")?.trim() === "0"
+        ? true
+        : /^(?:inherit|unset|larger|smaller|[\d.]+(?:%|em|ex|ch|lh))$/.test(fs)
+          ? s.zeroFont
+          : false
+      : hasNumericFontSizeAttr
+        ? false
         : s.zeroFont;
   return { pre, visHidden, zeroFont };
 }
