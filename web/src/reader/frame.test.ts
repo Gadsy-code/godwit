@@ -474,6 +474,12 @@ test("plain text: nothing but quoted lines (or attribution + quotes) stays open"
   expect(
     folded({ html: "", plain: "On Tue, Bob wrote:\n> a" })?.querySelector("details"),
   ).toBeNull();
+  expect(
+    folded({ html: "", plain: "> First\n\nOn Tue, Bob wrote:\n> Second" })?.querySelector(
+      "details",
+    ),
+  ).toBeNull();
+  expect(folded({ html: "", plain: "> First\n\n> Second" })?.querySelector("details")).toBeNull();
   // Non-Latin scripts (Cyrillic, Vietnamese) match without ASCII \b failures.
   expect(
     folded({ html: "", plain: "Боб написал:\n> Original" })?.querySelector("details"),

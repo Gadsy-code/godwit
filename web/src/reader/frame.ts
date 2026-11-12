@@ -78,7 +78,10 @@ export function plainHTML(text: string, fold = false): string {
       while (lead >= 0 && lines[lead].trim() === "") lead--;
       if (lead >= 0 && isAttribution(lines[lead])) from = lead;
     }
-    if (from === lines.length || !lines.slice(0, from).some((l) => l.trim() !== ""))
+    if (
+      from === lines.length ||
+      !lines.slice(0, from).some((l) => l.trim() !== "" && !quoted(l) && !isAttribution(l))
+    )
       from = lines.length;
   }
   const renderLine = (line: string) => {

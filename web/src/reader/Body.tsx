@@ -267,59 +267,8 @@ function attach(
     offs.push(() => t.removeEventListener(type, f as EventListener, o));
   };
 
-  // Height: the wrapper's own (not scrollHeight, which never shrinks below the viewport), applied
-  // to the iframe so nothing is clipped. One call per frame, when it changed, clamped to Go's limit.
-  // Mail sized by the viewport (vh) grows with the iframe: after the page resizes the iframe by Δ, a
-  // change of ≈Δ with no content change since (an image, the width) is that echo, so the last
-  // height holds instead of chasing it.
-  let last = -1;
-  let echo = 0; // the iframe's last change made by the page
-  let changed = true; // the content changed since then
-  let queued = false;
-  const measure = () => {
-    const cs = win.getComputedStyle(doc.body);
-    const ws = win.getComputedStyle(wrap);
-    const extra = [
-      cs.marginTop,
-      cs.marginBottom,
-      cs.paddingTop,
-      cs.paddingBottom,
-      ws.marginTop,
-      ws.marginBottom,
-    ].reduce((a, v) => a + (Number.parseFloat(v) || 0), 0);
-    const px = Math.min(MAX_HEIGHT, Math.ceil(wrap.getBoundingClientRect().height + extra));
-    if (px === last) return;
-    if (!changed && echo !== 0 && Math.abs(px - last - echo) <= 1) return;
-    changed = false;
-    echo = px - frame.getBoundingClientRect().height;
-    last = px;
-    frame.style.height = `${px}px`;
-    api.height(px).catch(ignore);
-  };
-  const contentChanged = () => {
-    changed = true;
-    schedule();
-  };
-  const schedule = () => {
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(() => {
-      queued = false;
-      if (live) measure();
-    });
-  };
-  const ro = new ResizeObserver(schedule);
-  ro.observe(wrap);
-  offs.push(() => ro.disconnect());
-  on(window, "resize", contentChanged);
-  for (const img of doc.images) {
-    on(img, "load", contentChanged);
-    on(img, "error", contentChanged);
-  }
-  schedule();
-
-  // Quoted-text fold controls: sync accessible labels, ensure contrast on custom-background mail
-  // surfaces, collapse on rail click, and position the native-styled tooltip beside pill or rail.
+  // Quoted-text fold controls: sync accessible labels and contrast on custom-background mail
+  // surfaces (including responsive resize updates).
   const rgbaOf = (v: string): [number, number, number, number] | null => {
     if (!/^rgba?\(/i.test(v)) return null;
     const m = v.match(/[\d.]+/g)?.map(Number);
@@ -367,6 +316,59 @@ function attach(
     }
   };
   syncFoldControls();
+
+  // Height: the wrapper's own (not scrollHeight, which never shrinks below the viewport), applied
+  // to the iframe so nothing is clipped. One call per frame, when it changed, clamped to Go's limit.
+  // Mail sized by the viewport (vh) grows with the iframe: after the page resizes the iframe by Δ, a
+  // change of ≈Δ with no content change since (an image, the width) is that echo, so the last
+  // height holds instead of chasing it.
+  let last = -1;
+  let echo = 0; // the iframe's last change made by the page
+  let changed = true; // the content changed since then
+  let queued = false;
+  const measure = () => {
+    syncFoldControls();
+    const cs = win.getComputedStyle(doc.body);
+    const ws = win.getComputedStyle(wrap);
+    const extra = [
+      cs.marginTop,
+      cs.marginBottom,
+      cs.paddingTop,
+      cs.paddingBottom,
+      ws.marginTop,
+      ws.marginBottom,
+    ].reduce((a, v) => a + (Number.parseFloat(v) || 0), 0);
+    const px = Math.min(MAX_HEIGHT, Math.ceil(wrap.getBoundingClientRect().height + extra));
+    if (px === last) return;
+    if (!changed && echo !== 0 && Math.abs(px - last - echo) <= 1) return;
+    changed = false;
+    echo = px - frame.getBoundingClientRect().height;
+    last = px;
+    frame.style.height = `${px}px`;
+    api.height(px).catch(ignore);
+  };
+  const contentChanged = () => {
+    changed = true;
+    schedule();
+  };
+  const schedule = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      if (live) measure();
+    });
+  };
+  const ro = new ResizeObserver(schedule);
+  ro.observe(wrap);
+  offs.push(() => ro.disconnect());
+  on(window, "resize", contentChanged);
+  on(win, "resize", contentChanged);
+  for (const img of doc.images) {
+    on(img, "load", contentChanged);
+    on(img, "error", contentChanged);
+  }
+  schedule();
   // Keep the 21 px tooltip inside the tight-fitted native WebView viewport at both edges.
   const placeTip = (x: number, anchorY: number, open: boolean) => {
     const vh = window.innerHeight;

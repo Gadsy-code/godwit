@@ -1341,6 +1341,27 @@ test("quote fold controls stay readable on naturally dark HTML surfaces in light
     const composited = fg.slice(0, 3).map((v) => v * op); // over #000
     expect(Math.min(...composited)).toBeGreaterThan(140); // >= 6:1 against #000
   }
+
+  // Responsive dark-to-light surface flip recomputes fold control contrast on resize.
+  cleanup();
+  const { doc, win } = await start(
+    body(
+      1,
+      '<style id="resp">#godwit-body #surface{background:#000}</style>' +
+        '<div id="surface"><p style="color:#fff">Reply</p><blockquote>Quote</blockquote></div>',
+      { theme, collapseQuotes: true },
+    ),
+  );
+  const summary = doc.querySelector("details.godwit-quote-fold > summary") as HTMLElement;
+  expect(Math.min(...channels(win.getComputedStyle(summary).color).slice(0, 3))).toBeGreaterThan(
+    200,
+  );
+  (doc.getElementById("resp") as HTMLStyleElement).textContent =
+    "#godwit-body #surface{background:#fff}";
+  act(() => window.dispatchEvent(new Event("resize")));
+  flush();
+  expect(summary.style.color).toBe("");
+  expect(Math.max(...channels(win.getComputedStyle(summary).color).slice(0, 3))).toBeLessThan(50);
 });
 
 test("quote fold controls keep light colors on dark plain-text and author-dark HTML replies", async () => {
