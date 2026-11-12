@@ -362,8 +362,22 @@ function attach(
   const ro = new ResizeObserver(schedule);
   ro.observe(wrap);
   offs.push(() => ro.disconnect());
-  on(window, "resize", contentChanged);
-  on(win, "resize", contentChanged);
+  let lastWidth = frame.getBoundingClientRect().width || 0;
+  on(window, "resize", () => {
+    lastWidth = frame.getBoundingClientRect().width || 0;
+    contentChanged();
+  });
+  // Updating frame.style.height fires resize on win; keep changed=false on height-only resizes so
+  // the vh echo guard holds, while still scheduling measure() to refresh fold-control contrast.
+  on(win, "resize", () => {
+    const w = frame.getBoundingClientRect().width || 0;
+    if (w !== lastWidth) {
+      lastWidth = w;
+      contentChanged();
+    } else {
+      schedule();
+    }
+  });
   for (const img of doc.images) {
     on(img, "load", contentChanged);
     on(img, "error", contentChanged);

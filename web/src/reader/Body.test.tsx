@@ -161,7 +161,7 @@ test("the iframe is sandboxed (scripts allowed for WebKit's listeners; the CSP f
 });
 
 test("height doesn't run away with viewport-sized mail (vh): it converges, bounded calls", async () => {
-  const { frame, doc } = await start(
+  const { frame, doc, win } = await start(
     body(1, '<div style="min-height:100vh">x <img src="data:image/gif;base64,R0" alt="i"></div>'),
   );
   const wrap = doc.getElementById("godwit-body") as HTMLElement;
@@ -172,6 +172,7 @@ test("height doesn't run away with viewport-sized mail (vh): it converges, bound
   const ro = observers.find((o) => o.targets.includes(wrap));
   const settle = () => {
     for (let i = 0; i < 30; i++) {
+      win.dispatchEvent(new win.Event("resize")); // frame.style.height updates fire resize on win
       ro?.cb([], {} as ResizeObserver); // any layout change re-fires the observer
       flush();
     }
