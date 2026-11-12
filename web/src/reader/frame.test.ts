@@ -381,10 +381,46 @@ test("only a quote at the end folds: an inline reply stays open", () => {
   expect(w?.querySelector("details")).toBeNull();
 });
 
-test("a message that is nothing but a quote stays open", () => {
+test("a message that is nothing but quotes stays open, including sibling quotes", () => {
   expect(
     folded({ html: "<blockquote>Forwarded text</blockquote>" })?.querySelector("details"),
   ).toBeNull();
+  expect(
+    folded({
+      html: "<blockquote>First</blockquote><blockquote>Second</blockquote>",
+    })?.querySelector("details"),
+  ).toBeNull();
+  expect(
+    folded({
+      html: "<p>On Mon, A wrote:</p><blockquote>First</blockquote><p>On Tue, B wrote:</p><blockquote>Second</blockquote>",
+    })?.querySelector("details"),
+  ).toBeNull();
+});
+
+test("folded HTML quotes preserve inherited white-space from ancestors", () => {
+  const doc = parse(
+    buildSrcdoc(
+      body({
+        collapseQuotes: true,
+        html: '<div style="white-space:pre-wrap"><p>Reply</p><blockquote id="q">a\n  b</blockquote></div>',
+      }),
+      theme(),
+    ),
+  );
+  const style = document.createElement("style");
+  style.textContent = doc.querySelector("style")?.textContent ?? "";
+  const host = doc.body.cloneNode(true) as HTMLElement;
+  document.head.append(style);
+  document.body.append(host);
+  try {
+    const q = host.querySelector("#q") as HTMLElement;
+    expect(getComputedStyle(q).whiteSpace).toBe("pre-wrap");
+    const summary = host.querySelector("details.godwit-quote-fold > summary") as HTMLElement;
+    expect(getComputedStyle(summary).whiteSpace).toBe("normal");
+  } finally {
+    style.remove();
+    host.remove();
+  }
 });
 
 test("folding is off unless asked, and leaves the markup as it came", () => {

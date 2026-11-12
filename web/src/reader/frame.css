@@ -150,7 +150,6 @@ body[data-scheme="dark"] {
   display: block;
   margin-top: 12px;
   padding-bottom: 6px;
-  white-space: normal;
 }
 
 #godwit-body .godwit-quote-fold[open] {
@@ -165,6 +164,7 @@ body[data-scheme="dark"] {
   outline: none;
   user-select: none;
   pointer-events: none;
+  white-space: normal;
 }
 
 #godwit-body .godwit-quote-fold > summary::-webkit-details-marker {
@@ -250,10 +250,6 @@ body[data-scheme="dark"] {
   color: #a3a3a3;
 }
 
-#godwit-body.godwit-plain .godwit-quote-body {
-  white-space: pre-wrap;
-}
-
 /* The outer quote rail already marks the first quote level; keep deeper nested quotes indented. */
 #godwit-body .godwit-quote-body [data-quote-root] {
   /* biome-ignore lint/complexity/noImportantStyles: Collapse the outer quote wrapper's own left bar and indent into the single left rail. */
@@ -273,6 +269,7 @@ body[data-scheme="dark"] {
   bottom: 2px;
   width: 12px;
   cursor: pointer;
+  white-space: normal;
 }
 
 #godwit-body .godwit-quote-rail-line {
@@ -287,4 +284,10 @@ body[data-scheme="dark"] {
 
 #godwit-body .godwit-quote-rail:hover .godwit-quote-rail-line {
   background: var(--godwit-quote-rail-hover);
+}
+
+@media print {
+  #godwit-body .godwit-quote-fold > summary {
+    display: none;
+  }
 }

@@ -305,9 +305,14 @@ export function foldQuotes(html: string): string {
     (n) =>
       !first.contains(n) &&
       n !== first &&
+      !n.parentElement?.closest(QUOTE) &&
       !!(first.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING),
   );
-  if (before === "" || isAttribution(before)) return html;
+  if (
+    before === "" ||
+    before.split("\n").every((line) => line.trim() === "" || isAttribution(line))
+  )
+    return html;
 
   while (first.previousSibling && isBlankSpacer(first.previousSibling)) {
     first.previousSibling.remove();

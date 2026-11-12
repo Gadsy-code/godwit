@@ -1308,4 +1308,20 @@ test("quote fold controls keep CSS states in auto-dark mode, show tooltips and c
   });
   expect(fold.open).toBe(false);
   expect(screen.queryByRole("tooltip")).toBeNull();
+
+  // Printing expands closed folds and synchronously resizes the iframe, then restores them after.
+  const wrap = doc.getElementById("godwit-body") as HTMLElement;
+  wrap.getBoundingClientRect = () => ({ height: fold.open ? 260 : 80 }) as DOMRect;
+  act(() => {
+    window.dispatchEvent(new Event("beforeprint"));
+  });
+  expect(fold.open).toBe(true);
+  expect(doc.querySelector("iframe") ?? document.querySelector("iframe")?.style.height).toBe(
+    "260px",
+  );
+  act(() => {
+    window.dispatchEvent(new Event("afterprint"));
+  });
+  expect(fold.open).toBe(false);
+  expect(document.querySelector("iframe")?.style.height).toBe("80px");
 });

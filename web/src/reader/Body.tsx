@@ -381,6 +381,45 @@ function attach(
   });
   on(doc, "focusout", () => setTip(null));
 
+  // Printing: expand closed quote folds and resize the iframe synchronously so printed/PDF output
+  // includes the full message, then restore collapsed state afterwards.
+  let printFolds: HTMLDetailsElement[] | null = null;
+  const enterPrint = () => {
+    if (printFolds) return;
+    setTip(null);
+    printFolds = [];
+    for (const fold of doc.querySelectorAll<HTMLDetailsElement>("details.godwit-quote-fold")) {
+      if (!fold.open) {
+        printFolds.push(fold);
+        fold.open = true;
+      }
+    }
+    if (printFolds.length > 0) {
+      changed = true;
+      measure();
+    }
+  };
+  const exitPrint = () => {
+    if (!printFolds) return;
+    const closed = printFolds;
+    printFolds = null;
+    for (const fold of closed) fold.open = false;
+    if (closed.length > 0) {
+      changed = true;
+      measure();
+    }
+  };
+  for (const w of [window, win]) {
+    on(w, "beforeprint", enterPrint);
+    on(w, "afterprint", exitPrint);
+    if (typeof w.matchMedia === "function") {
+      const mql = w.matchMedia("print");
+      if (typeof mql?.addEventListener === "function") {
+        on<MediaQueryListEvent>(mql, "change", (e) => (e.matches ? enterPrint() : exitPrint()));
+      }
+    }
+  }
+
   // Links: data-href only (Go's sanitizer); nothing else navigates.
   const linkOf = (t: EventTarget | null) =>
     (t as Element | null)?.closest?.("[data-href]")?.getAttribute("data-href") ?? null;
