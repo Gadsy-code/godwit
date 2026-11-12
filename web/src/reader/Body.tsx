@@ -6,7 +6,7 @@ import { useT } from "@/shared/i18n";
 import { forwardShortcuts } from "@/shared/shortcuts";
 import { applyTheme, type Theme as PageTheme } from "@/shared/theme";
 import { adaptDarkMode } from "./dark";
-import { buildSrcdoc, frameScheme } from "./frame";
+import { buildSrcdoc, frameScheme, isDark } from "./frame";
 
 const ignore = () => {};
 let nextDocument = 0;
@@ -171,9 +171,10 @@ export function Body({ body, theme }: { body: ReaderBody; theme: Theme }) {
     [t],
   );
 
+  const dark = isDark(theme, systemDark);
   const wire = useCallback(
-    (f: HTMLIFrameElement) => attach(f, theme, labels, setTip),
-    [theme, labels],
+    (f: HTMLIFrameElement) => attach(f, theme, dark, labels, setTip),
+    [theme, dark, labels],
   );
   useEffect(() => {
     const f = frame.current;
@@ -246,6 +247,7 @@ export function Body({ body, theme }: { body: ReaderBody; theme: Theme }) {
 function attach(
   frame: HTMLIFrameElement,
   theme: Theme,
+  darkCanvas: boolean,
   labels: { expand: string; collapse: string },
   setTip: (tip: QuoteTip | null) => void,
 ): () => void {
@@ -319,22 +321,29 @@ function attach(
   // Quoted-text fold controls: sync accessible labels, ensure contrast on custom-background mail
   // surfaces, collapse on rail click, and position the native-styled tooltip beside pill or rail.
   const rgbaOf = (v: string): [number, number, number, number] | null => {
+    if (!/^rgba?\(/i.test(v)) return null;
     const m = v.match(/[\d.]+/g)?.map(Number);
     return m && m.length >= 3 ? [m[0], m[1], m[2], m[3] ?? 1] : null;
   };
   const luma = (c: [number, number, number]) => (c[0] * 299 + c[1] * 587 + c[2] * 114) / 1000;
   const syncFoldControls = () => {
-    const darkCanvas = doc.documentElement.style.colorScheme === "dark";
     const baseBg: [number, number, number] = darkCanvas ? [10, 10, 10] : [255, 255, 255];
     for (const fold of doc.querySelectorAll<HTMLDetailsElement>("details.godwit-quote-fold")) {
       const summary = fold.querySelector<HTMLElement>("summary");
+      const rail = fold.querySelector<HTMLElement>(".godwit-quote-rail");
       summary?.setAttribute("aria-label", fold.open ? labels.collapse : labels.expand);
+      summary?.style.removeProperty("color");
+      rail?.style.removeProperty("color");
       const chain: HTMLElement[] = [];
       for (let p = fold.parentElement; p; p = p.parentElement) chain.unshift(p);
       let bg = baseBg;
+      let imageBacked = false;
       for (const el of chain) {
-        const c = rgbaOf(win.getComputedStyle(el).backgroundColor);
+        const cs = win.getComputedStyle(el);
+        if (cs.backgroundImage && cs.backgroundImage !== "none") imageBacked = true;
+        const c = rgbaOf(cs.backgroundColor);
         if (c && c[3] > 0) {
+          if (c[3] >= 1) imageBacked = false;
           bg = [
             c[0] * c[3] + bg[0] * (1 - c[3]),
             c[1] * c[3] + bg[1] * (1 - c[3]),
@@ -342,8 +351,7 @@ function attach(
           ];
         }
       }
-      if (summary) {
-        summary.style.removeProperty("color");
+      if (summary && !imageBacked) {
         const fg = rgbaOf(win.getComputedStyle(summary).color);
         if (fg) {
           const bgL = luma(bg);
@@ -352,7 +360,6 @@ function attach(
             bgL < 110 && fgL < 140 ? "#fafafa" : bgL > 145 && fgL > 160 ? "#0a0a0a" : "";
           if (override) {
             summary.style.color = override;
-            const rail = fold.querySelector<HTMLElement>(".godwit-quote-rail");
             if (rail) rail.style.color = override;
           }
         }

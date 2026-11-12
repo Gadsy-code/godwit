@@ -1341,3 +1341,32 @@ test("quote fold controls stay readable on naturally dark HTML surfaces in light
     expect(Math.min(...composited)).toBeGreaterThan(140); // >= 6:1 against #000
   }
 });
+
+test("quote fold controls keep light colors on dark plain-text and author-dark HTML replies", async () => {
+  const { doc: plainDoc, win: plainWin } = await start(
+    body(1, "", {
+      plain: "Sounds good!\n\nOn Tue, Bob wrote:\n> Dinner at 8?",
+      theme: darkTheme,
+      collapseQuotes: true,
+    }),
+  );
+  const plainSummary = plainDoc.querySelector("details.godwit-quote-fold > summary") as HTMLElement;
+  expect(plainSummary.style.color).toBe("");
+  expect(
+    Math.min(...channels(plainWin.getComputedStyle(plainSummary).color).slice(0, 3)),
+  ).toBeGreaterThan(200);
+
+  cleanup();
+  const { doc: awareDoc, win: awareWin } = await start(
+    body(
+      1,
+      '<style data-dark=""></style><p>Sounds good!</p><blockquote><p>Dinner?</p></blockquote>',
+      { theme: darkTheme, collapseQuotes: true },
+    ),
+  );
+  const awareSummary = awareDoc.querySelector("details.godwit-quote-fold > summary") as HTMLElement;
+  expect(awareSummary.style.color).toBe("");
+  expect(
+    Math.min(...channels(awareWin.getComputedStyle(awareSummary).color).slice(0, 3)),
+  ).toBeGreaterThan(200);
+});
