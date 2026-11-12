@@ -119,15 +119,24 @@ const visibleWords = (doc: Document, root: Node, keep: (n: Node) => boolean): st
 
 const QUOTE = "blockquote, div.gmail_quote, div.yahoo_quoted, div.protonmail_quote";
 
+function hasVisualPaint(el: Element): boolean {
+  return (
+    el.hasAttribute("data-bg") ||
+    el.hasAttribute("bgcolor") ||
+    el.hasAttribute("background") ||
+    /(?:^|[;\s])(?:background|border)(?:-[a-z-]+)?\s*:/i.test(el.getAttribute("style") ?? "")
+  );
+}
+
 function isBlankSpacer(n: ChildNode): boolean {
   if (n.nodeType === Node.TEXT_NODE) return (n.textContent ?? "").trim() === "";
   if (n.nodeType !== Node.ELEMENT_NODE) return false;
   const el = n as Element;
   if (el.tagName === "BR") return true;
-  return (
-    (el.tagName === "DIV" || el.tagName === "P") &&
-    (el.textContent ?? "").trim() === "" &&
-    !el.querySelector("img, hr, table, svg, video, iframe")
+  if ((el.tagName !== "DIV" && el.tagName !== "P") || (el.textContent ?? "").trim() !== "")
+    return false;
+  return ![el, ...el.querySelectorAll("*")].some(
+    (c) => (c !== el && c.tagName !== "BR") || hasVisualPaint(c),
   );
 }
 

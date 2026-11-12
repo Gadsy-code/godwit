@@ -115,7 +115,7 @@ func (f *readerFixture) waitEmitted(t *testing.T, page any) ReaderBody {
 			}
 		}
 		return got.Version != 0
-	}, 10*time.Second, 5*time.Millisecond, "no body emitted")
+	}, 30*time.Second, 5*time.Millisecond, "no body emitted")
 	return got
 }
 

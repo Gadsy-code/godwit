@@ -276,6 +276,17 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
   expect(withAttr?.firstElementChild?.textContent).toBe("Thanks!");
   expect(withAttr?.children).toHaveLength(2); // blank spacer above the fold was trimmed
 
+  // Image-backed or bordered blocks right above the attribution/quote are sender content, not spacers.
+  const withBanner = folded({
+    html:
+      "<p>Thanks!</p>" +
+      '<div id="banner" style="height:40px;background-image:url(godwit-img://m1/sig)"></div>' +
+      "<p>On Tue, Bob wrote:</p><blockquote><p>Dinner?</p></blockquote>",
+  });
+  expect(withBanner?.querySelector("#banner")).not.toBeNull();
+  expect(withBanner?.querySelector("details #banner")).toBeNull();
+  expect(withBanner?.querySelector("details")?.textContent).toContain("On Tue");
+
   const prose = folded({
     html: "<p>Hi,</p><p>My notes:</p><blockquote><p>Spec</p></blockquote>",
   });
