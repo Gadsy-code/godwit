@@ -293,6 +293,19 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
   expect(prose?.querySelector("details")?.textContent).not.toContain("My notes:");
   expect(prose?.textContent).toContain("My notes:");
 
+  // A multi-line container mixing sender prose with an attribution on a later line stays visible,
+  // while a trailing <br> on a genuine single-line attribution still folds.
+  const multiLine = folded({
+    html: "<p>Hi</p><div>Do not pay yet.<br>On Tue, Bob wrote:</div><blockquote><p>Old request</p></blockquote>",
+  });
+  expect(multiLine?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
+  expect(multiLine?.textContent).toContain("Do not pay yet.");
+
+  const trailingBr = folded({
+    html: "<p>Hi</p><div>On Tue, Bob wrote:<br></div><blockquote><p>Old request</p></blockquote>",
+  });
+  expect(trailingBr?.querySelector("details")?.textContent).toContain("On Tue, Bob wrote:");
+
   // Nothing but an attribution and a quote stays open.
   expect(
     folded({ html: "<p>On Tue, Bob wrote:</p><blockquote>Forwarded</blockquote>" })?.querySelector(
@@ -371,4 +384,14 @@ test("plain text: nothing but quoted lines (or attribution + quotes) stays open"
   expect(
     folded({ html: "", plain: "On Tue, Bob wrote:\n> a" })?.querySelector("details"),
   ).toBeNull();
+  // Non-Latin scripts (Cyrillic, Vietnamese) match without ASCII \b failures.
+  expect(
+    folded({ html: "", plain: "Боб написал:\n> Original" })?.querySelector("details"),
+  ).toBeNull();
+  expect(
+    folded({ html: "", plain: "Vào Thứ Ba, Bob đã viết:\n> Original" })?.querySelector("details"),
+  ).toBeNull();
+  const ruReply = folded({ html: "", plain: "Спасибо!\n\n12 нояб., Боб пишет:\n> Ужин?" });
+  expect(ruReply?.querySelector("details")?.textContent).toContain("Боб пишет:");
+  expect(ruReply?.firstChild?.textContent).toBe("Спасибо!");
 });

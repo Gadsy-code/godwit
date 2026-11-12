@@ -31,8 +31,9 @@ function linkLength(u: string): number {
 }
 
 // A single-line reply lead ("On … wrote:", "于 … 写道：") placed right above a quote by mail clients.
+// Uses explicit start/whitespace/comma boundaries instead of \b so Cyrillic and accented Latin match.
 const ATTR_RE =
-  /\bwrote\s*:|写道\s*[:：]|寫道\s*[:：]|書きました\s*[:：]|작성\s*:|\bschrieb\b.*:|\ba écrit\s*:|\bescribió\s*:|\bescreveu\s*:|\bha scritto\s*:|\b(?:пишет|написал[аи]?)\s*:|\bschreef\b.*:|\byazdı\s*:|\bđã viết\s*:/i;
+  /(?:^|[\s,，])(?:wrote\s*:|a écrit\s*:|escribió\s*:|escreveu\s*:|ha scritto\s*:|(?:пишет|написал[аи]?)\s*:|yazdı\s*:|đã viết\s*:|(?:schrieb|schreef)(?=\s).*:)|(?:写道|寫道|書きました)\s*[:：]|(?:^|\s)작성\s*:/i;
 
 function isAttribution(text: string): boolean {
   const trimmed = text.trim();
@@ -117,6 +118,65 @@ const visibleWords = (doc: Document, root: Node, keep: (n: Node) => boolean): st
   return out.trim();
 };
 
+const BLOCK_TAGS = new Set([
+  "ADDRESS",
+  "ARTICLE",
+  "ASIDE",
+  "BLOCKQUOTE",
+  "DIV",
+  "DL",
+  "DT",
+  "DD",
+  "FIELDSET",
+  "FIGCAPTION",
+  "FIGURE",
+  "FOOTER",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "HEADER",
+  "HR",
+  "LI",
+  "MAIN",
+  "NAV",
+  "OL",
+  "P",
+  "PRE",
+  "SECTION",
+  "TABLE",
+  "TR",
+  "UL",
+]);
+
+// Visible text of root with <br> and block boundaries preserved as "\n", so multi-line blocks are
+// never concatenated into a single synthetic attribution line.
+function renderedText(root: Node, keep: (n: Node) => boolean = () => true): string {
+  let out = "";
+  const walk = (n: Node) => {
+    if (!keep(n)) return;
+    if (n.nodeType === Node.TEXT_NODE) {
+      out += n.textContent ?? "";
+      return;
+    }
+    if (n.nodeType !== Node.ELEMENT_NODE) return;
+    const tag = (n as Element).tagName;
+    if (tag === "STYLE" || tag === "SCRIPT") return;
+    if (tag === "BR") {
+      out += "\n";
+      return;
+    }
+    const isBlock = n !== root && BLOCK_TAGS.has(tag);
+    if (isBlock && out && !out.endsWith("\n")) out += "\n";
+    for (let c = n.firstChild; c; c = c.nextSibling) walk(c);
+    if (isBlock && out && !out.endsWith("\n")) out += "\n";
+  };
+  walk(root);
+  return out.trim();
+}
+
 const QUOTE = "blockquote, div.gmail_quote, div.yahoo_quoted, div.protonmail_quote";
 
 function hasVisualPaint(el: Element): boolean {
@@ -166,8 +226,8 @@ export function foldQuotes(html: string): string {
     if (
       cur?.nodeType === Node.ELEMENT_NODE &&
       ["P", "DIV", "SPAN"].includes((cur as Element).tagName) &&
-      !(cur as Element).querySelector("blockquote, img, table, ul, ol, pre, hr") &&
-      isAttribution(cur.textContent ?? "")
+      !(cur as Element).querySelector("p, div, blockquote, img, table, ul, ol, pre, hr") &&
+      isAttribution(renderedText(cur))
     ) {
       first = cur;
     }
@@ -202,8 +262,7 @@ export function foldQuotes(html: string): string {
     });
     if (directQuotes.length !== 1) break;
     const inner = directQuotes[0];
-    const leadText = visibleWords(
-      doc,
+    const leadText = renderedText(
       rootQuote,
       (n) =>
         !inner.contains(n) &&
