@@ -23,6 +23,8 @@ import (
 	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/backend/conn"
 	"github.com/godwit-email/godwit/backend/ews"
+	"github.com/godwit-email/godwit/backend/gmailapi"
+	"github.com/godwit-email/godwit/backend/jmap"
 	"github.com/godwit-email/godwit/core/ai"
 	"github.com/godwit-email/godwit/core/ai/mask"
 	"github.com/godwit-email/godwit/core/ai/mask/guard"
@@ -132,10 +134,10 @@ type Service struct {
 	editMu     sync.Mutex                  // local changes (SetFlags, Move, Delete, drafts, Send) read then write
 	ruleRunMu  sync.Mutex                  // one rule run at a time (runRule): the consumer, a retry, a run over existing mail
 
-	workersMu sync.Mutex
-	workers   map[int64]*worker
-	closed    bool
-	light     atomic.Bool // background rounds cover the inbox only; the window's state (SetLightBackground)
+	workersMu   sync.Mutex
+	workers     map[int64]*worker
+	closed      bool
+	inboxRounds atomic.Bool // background rounds cover the inbox only; the window's state (SetInboxOnly)
 
 	callsMu     sync.Mutex
 	modelMu     sync.RWMutex // writers: a model service's row and key change together; readers see both or neither (ponytail: global, per-id if contended)
@@ -369,6 +371,7 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 	}
 	s.startJanitor()
 	s.startReclaim()
+	s.startImageRetention()
 	if err := s.startRules(ctx); err != nil {
 		s.Close()
 		return nil, err
@@ -622,13 +625,13 @@ func (s *Service) keepConn(id int64, k *downloadConn) {
 	s.kept[id] = k
 }
 
-// SetLightBackground narrows the workers' rounds to the inbox while on: the
+// SetInboxOnly narrows the workers' rounds to the inbox while on: the
 // window is in the background, where only new mail needs to arrive for its
 // notification, and every other folder would cost a round each. Turning it
 // off wakes every worker so the folders catch up at once. SyncNow is never
 // narrowed: a sync the user asks for is whole.
-func (s *Service) SetLightBackground(on bool) {
-	if s.light.Swap(on) == on || on {
+func (s *Service) SetInboxOnly(on bool) {
+	if s.inboxRounds.Swap(on) == on || on {
 		return // unchanged, or narrowed: the next rounds follow on their own
 	}
 	s.workersMu.Lock()
@@ -642,8 +645,8 @@ func (s *Service) SetLightBackground(on bool) {
 	}
 }
 
-// LightBackground reports whether background rounds cover the inbox only.
-func (s *Service) LightBackground() bool { return s.light.Load() }
+// InboxOnly reports whether background rounds cover the inbox only.
+func (s *Service) InboxOnly() bool { return s.inboxRounds.Load() }
 
 // SyncNow connects to the account's IMAP server, pushes queued local changes,
 // sends and files the outbox, and fetches new mail. Calls for the same account
@@ -866,6 +869,16 @@ func (s *Service) checkSMTP(ctx context.Context, accountID int64, explicit bool)
 			return err
 		case auth.EWS: // an EWS account sends through EWS: sign in there, never to SMTP
 			r := ews.New(ews.Config{URL: ewsURL(sa.acc), Credentials: sa.credentials})
+			defer r.Close()
+			_, err := r.Check(ctx)
+			return err
+		case auth.GmailAPI:
+			r := gmailapi.New(gmailapi.Config{BaseURL: slotURL(sa.acc.Receiving, sa.acc.Receiving.Path), Credentials: sa.credentials})
+			defer r.Close()
+			_, err := r.Check(ctx)
+			return err
+		case auth.JMAP: // a JMAP account sends through JMAP: sign in there, never to SMTP
+			r := jmap.New(jmap.Config{SessionURL: sessionURL(sa.acc.Receiving), Credentials: sa.credentials})
 			defer r.Close()
 			_, err := r.Check(ctx)
 			return err

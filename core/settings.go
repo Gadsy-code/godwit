@@ -14,6 +14,7 @@ import (
 	"github.com/godwit-email/godwit/core/ai"
 	"github.com/godwit-email/godwit/core/ai/mask"
 	"github.com/godwit-email/godwit/core/events"
+	"github.com/godwit-email/godwit/core/gateway"
 	gomail "github.com/godwit-email/godwit/core/mail"
 	"github.com/godwit-email/godwit/core/skills"
 	"github.com/godwit-email/godwit/core/store"
@@ -28,9 +29,10 @@ type Settings struct {
 	NoTranslate                                                    []string
 	LaunchAtLogin, KeepInBackground, ShowTrayIcon, UnreadInMenuBar bool
 	UnreadOnAppIcon                                                bool
-	// LightBackground syncs the inbox only while the window is in the
-	// background; the other folders catch up when it comes back.
-	LightBackground                   bool
+	// BackgroundSync is what syncs while the window is behind another app:
+	// BackgroundSyncInbox (the default; "" too), whose other folders catch up
+	// when the window comes back, or BackgroundSyncAll.
+	BackgroundSync                    string
 	NotifyNewMail, NotifyPreview      bool
 	QuickReplies, Summary, ThreadView bool
 	ThreadCollapse                    bool // collapse runs of folded messages into an expandable card
@@ -56,6 +58,14 @@ type Settings struct {
 	// ExperimentalPOP3 (实验性 POP3) offers POP3 when adding an account; off
 	// by default. Off, POP3 accounts already added keep working.
 	ExperimentalPOP3 bool
+	// ExperimentalGraph (实验性 Microsoft Graph) offers Microsoft Graph when
+	// adding an Outlook account; off by default. Off, Graph accounts already
+	// added keep working.
+	ExperimentalGraph bool
+	// ExperimentalGmailAPI (实验性 Gmail API) offers Gmail API when adding a
+	// Gmail account with the user's own OAuth client; off by default. Off,
+	// Gmail API accounts already added keep working.
+	ExperimentalGmailAPI bool
 	// MCPSend is what godwit mcp's send_draft does (通过 MCP 发送):
 	// MCPSendOff, MCPSendConfirm (the default; "" too) or MCPSendDirect.
 	MCPSend string
@@ -106,6 +116,19 @@ type Settings struct {
 	// CollapseQuotes folds the quoted text of a mail (what it replies to or forwards)
 	// behind a button in the reader, leaving what its sender wrote.
 	CollapseQuotes bool
+	// ImageRetentionDays deletes a cached remote image that has gone unread this
+	// many days: 0 keeps it until the cache is full, then evicts the least
+	// recently used (MaxBytes). Attachments are not in that cache.
+	ImageRetentionDays int
+	// SidebarOrder is the mail sidebar's sections, top to bottom, as a comma-separated
+	// permutation of SidebarSections ("" is the default, views, labels, accounts).
+	SidebarOrder string
+	// ListRowOrder is what leads a mail list row: ListRowSender (the default; "" too)
+	// puts who it is with first, ListRowSubject the subject.
+	ListRowOrder string
+	// ReaderWidth is how wide the reading column may grow: ReaderWidthNormal (the
+	// default; "" too), ReaderWidthWide or ReaderWidthFull.
+	ReaderWidth string
 	// SidebarWidth is the page sidebars' width in DIPs, the user's drag:
 	// 0 for the default, else 240 to 480.
 	SidebarWidth int
@@ -141,11 +164,12 @@ type Settings struct {
 	// SettingsVersion is 2 once the default text grew from 13 to 14 px and a
 	// stored FontSize was raised by one to keep its sizes; 3 once a stored
 	// BodyFontSize of 14, the old default, became 0 (follow FontSize); 4 once
-	// Chinese language tags name the script (zh-CN → zh-Hans, zh-TW → zh-Hant).
+	// Chinese language tags name the script (zh-CN → zh-Hans, zh-TW → zh-Hant);
+	// 5 once the LightBackground switch became BackgroundSync.
 	SettingsVersion int
 }
 
-const settingsVersion = 4
+const settingsVersion = 5
 
 // chineseScriptTag is the script tag a region-tagged Chinese setting became
 // in settings version 4.
@@ -171,6 +195,47 @@ const (
 	LabelDisplayText = "text"
 )
 
+// MaxImageRetentionDays bounds Settings.ImageRetentionDays.
+const MaxImageRetentionDays = 365
+
+// SidebarSections are the mail sidebar's movable sections, in the default order.
+var SidebarSections = []string{"views", "labels", "accounts"}
+
+// SidebarOrder is st's sidebar sections in the order the user chose, or the
+// default one when none was, or the choice is not a permutation of SidebarSections.
+func SidebarOrder(st Settings) []string {
+	if order, ok := parseSidebarOrder(st.SidebarOrder); ok && st.SidebarOrder != "" {
+		return order
+	}
+	return slices.Clone(SidebarSections)
+}
+
+func parseSidebarOrder(s string) ([]string, bool) {
+	order := strings.Split(s, ",")
+	sorted := slices.Sorted(slices.Values(order))
+	want := slices.Sorted(slices.Values(SidebarSections))
+	return order, slices.Equal(sorted, want)
+}
+
+// What leads a list row (Settings.ListRowOrder).
+const (
+	ListRowSender  = "sender"
+	ListRowSubject = "subject"
+)
+
+// What syncs while the window is in the background (Settings.BackgroundSync).
+const (
+	BackgroundSyncInbox = "inbox"
+	BackgroundSyncAll   = "all"
+)
+
+// How wide the reading column may grow (Settings.ReaderWidth).
+const (
+	ReaderWidthNormal = "normal"
+	ReaderWidthWide   = "wide"
+	ReaderWidthFull   = "full"
+)
+
 // MinThreadCollapse and MaxThreadCollapse bound ThreadCollapseThreshold.
 const (
 	MinThreadCollapse     = 2
@@ -180,7 +245,7 @@ const (
 
 func defaultSettings() Settings {
 	return Settings{Theme: "system", Density: "compact", FontSize: 14, SettingsVersion: settingsVersion, ReplyLanguage: "match", RemoteImages: "auto",
-		KeepInBackground: true, ShowTrayIcon: true, UnreadOnAppIcon: true, NotifyNewMail: true, NotifyPreview: true, ThreadView: true, LightBackground: true,
+		KeepInBackground: true, ShowTrayIcon: true, UnreadOnAppIcon: true, NotifyNewMail: true, NotifyPreview: true, ThreadView: true, BackgroundSync: BackgroundSyncInbox,
 		ThreadCollapse: true, ThreadCollapseThreshold: DefaultThreadCollapse, AutoLabel: true, LabelDisplay: LabelDisplayBoth, JudgeThreshold: 0.8,
 		MCPSend: MCPSendConfirm, Masking: true, MaskCategories: defaultMaskCategories(),
 		SecurityWarnings: true, VerifiedBadge: true, SecurityAI: false, ProxyMode: ProxySystem}
@@ -225,6 +290,16 @@ func (st Settings) validate(kept []mask.Rule) error {
 		return fmt.Errorf("invalid reply language mode %q", st.ReplyLanguage)
 	case !in(st.LabelDisplay, "", LabelDisplayBoth, LabelDisplayIcon, LabelDisplayText):
 		return fmt.Errorf("invalid label display %q", st.LabelDisplay)
+	case st.ImageRetentionDays < 0 || st.ImageRetentionDays > MaxImageRetentionDays:
+		return fmt.Errorf("image retention must be between 0 and %d days", MaxImageRetentionDays)
+	case st.SidebarOrder != "" && !validSidebarOrder(st.SidebarOrder):
+		return fmt.Errorf("invalid sidebar order %q", st.SidebarOrder)
+	case !in(st.ListRowOrder, "", ListRowSender, ListRowSubject):
+		return fmt.Errorf("invalid list row order %q", st.ListRowOrder)
+	case !in(st.BackgroundSync, "", BackgroundSyncInbox, BackgroundSyncAll):
+		return fmt.Errorf("invalid background sync %q", st.BackgroundSync)
+	case !in(st.ReaderWidth, "", ReaderWidthNormal, ReaderWidthWide, ReaderWidthFull):
+		return fmt.Errorf("invalid reader width %q", st.ReaderWidth)
 	case st.FontSize < 10 || st.FontSize > 32, st.BodyFontSize != 0 && (st.BodyFontSize < 10 || st.BodyFontSize > 32):
 		return fmt.Errorf("font size must be between 10 and 32")
 	case st.SidebarWidth != 0 && (st.SidebarWidth < 240 || st.SidebarWidth > 480):
@@ -284,7 +359,10 @@ func (s *Service) loadSettings(ctx context.Context) (Settings, error) {
 		return st, err
 	}
 	raw := []byte(rows.Values[0][0].(string))
-	var stored struct{ FontSize, SettingsVersion int } // the defaults must not stand in for the stored version
+	var stored struct {
+		FontSize, SettingsVersion int
+		LightBackground           *bool // version 4's switch; off kept every folder syncing
+	} // the defaults must not stand in for the stored version
 	if err := json.Unmarshal(raw, &stored); err != nil {
 		return Settings{}, fmt.Errorf("stored settings: %w", err)
 	}
@@ -302,6 +380,9 @@ func (s *Service) loadSettings(ctx context.Context) (Settings, error) {
 		for i, l := range st.NoTranslate {
 			st.NoTranslate[i] = scriptTag(l)
 		}
+	}
+	if stored.SettingsVersion < 5 && stored.LightBackground != nil && !*stored.LightBackground {
+		st.BackgroundSync = BackgroundSyncAll
 	}
 	st.JudgeThreshold = max(MinJudgeThreshold, min(MaxJudgeThreshold, st.JudgeThreshold)) // older builds allowed 0..1
 	st.ThreadCollapseThreshold = max(MinThreadCollapse, min(MaxThreadCollapse, st.ThreadCollapseThreshold))
@@ -334,21 +415,27 @@ func (s *Service) SetSettings(ctx context.Context, st Settings) (Settings, error
 	password := st.ProxyPassword
 	st.ProxyPassword, st.ProxyPasswordSet = "", password != "" || st.ProxyPasswordSet && stored.ProxyPasswordSet
 	st.SettingsVersion = settingsVersion // a client's 0 must not make the next load raise FontSize again
-	write := func(st Settings) error {
+	settingStmt := func(st Settings) (sqlite.Statement, error) {
 		b, err := json.Marshal(st)
-		if err != nil {
-			return err
-		}
-		_, err = s.db.Execute(ctx, `INSERT INTO settings(key, value) VALUES ('app', ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, string(b))
-		return err
+		return sqlite.Statement{SQL: `INSERT INTO settings(key, value) VALUES ('app', ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value`, Args: []any{string(b)}}, err
 	}
-	if err := write(st); err != nil {
+	stmt, err := settingStmt(st)
+	if err != nil {
+		return Settings{}, err
+	}
+	stmts := []sqlite.Statement{stmt}
+	if src, _ := ctx.Value(externalSourceKey{}).(string); src == AuditLocalAPI && mcpSendRank(st.MCPSend) > mcpSendRank(stored.MCPSend) {
+		stmts = append(stmts, gateway.Audit(gateway.Entry{Source: src, Tool: "SetSettings", Decision: "allow"}, s.secrets.Redact))
+	}
+	if _, err := s.db.Transaction(ctx, stmts); err != nil {
 		return Settings{}, err
 	}
 	// the keychain after the row, which goes back if it fails, so the two never disagree
 	if err := s.saveProxyPassword(password, st, stored); err != nil {
-		if rerr := write(stored); rerr != nil {
+		if prev, merr := settingStmt(stored); merr != nil {
+			err = errors.Join(err, merr)
+		} else if _, rerr := s.db.Execute(ctx, prev.SQL, prev.Args...); rerr != nil {
 			err = errors.Join(err, rerr)
 		}
 		return Settings{}, err
@@ -363,6 +450,19 @@ func (s *Service) SetSettings(ctx context.Context, st Settings) (Settings, error
 	}
 	s.bus.Publish(events.Event{Type: events.SettingsChanged})
 	return st, nil
+}
+
+func mcpSendRank(level string) int {
+	switch level {
+	case MCPSendOff:
+		return 0
+	case "", MCPSendConfirm:
+		return 1
+	case MCPSendDirect:
+		return 2
+	default:
+		return -1
+	}
 }
 
 // SystemLanguage is the operating system language tag passed in Options.
@@ -569,4 +669,9 @@ func (s *Service) ImagesAllowed(ctx context.Context, message int64) (bool, error
 		return slices.Contains(trusted, strings.ToLower(a.Address)), err
 	}
 	return false, nil
+}
+
+func validSidebarOrder(s string) bool {
+	_, ok := parseSidebarOrder(s)
+	return ok
 }

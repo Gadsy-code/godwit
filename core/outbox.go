@@ -15,7 +15,9 @@ import (
 	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/backend/conn"
 	"github.com/godwit-email/godwit/backend/ews"
+	"github.com/godwit-email/godwit/backend/gmailapi"
 	"github.com/godwit-email/godwit/backend/graph"
+	"github.com/godwit-email/godwit/backend/jmap"
 	"github.com/godwit-email/godwit/backend/smtpbackend"
 	"github.com/godwit-email/godwit/core/auth"
 	"github.com/godwit-email/godwit/core/events"
@@ -151,7 +153,7 @@ func (s *Service) takeBack(ctx context.Context, id int64, state string) error {
 	if err := s.bind(ctx, store.Int(r[0])); err != nil {
 		return err
 	}
-	rs, err := s.db.Transaction(ctx, []sqlite.Statement{
+	rs, err := s.db.DurableTransaction(ctx, []sqlite.Statement{
 		{SQL: "DELETE FROM reply_records WHERE outbox_id = (SELECT id FROM outbox WHERE id = ? AND state = ? AND draft_id IS NOT NULL)", Args: []any{id, state}},
 		{SQL: "DELETE FROM outbox WHERE id = ? AND state = ? AND draft_id IS NOT NULL", Args: []any{id, state}}})
 	if err != nil {
@@ -213,7 +215,7 @@ func (s *Service) ResolveOutbox(ctx context.Context, id int64, action string) er
 	case "discard":
 		// The draft goes with the item, in the same transaction: it is done with.
 		const decidable = "id = ? AND state IN ('send_uncertain', 'archive_uncertain', 'failed')"
-		rs, terr := s.db.Transaction(ctx, []sqlite.Statement{
+		rs, terr := s.db.DurableTransaction(ctx, []sqlite.Statement{
 			{SQL: "DELETE FROM drafts WHERE id = (SELECT draft_id FROM outbox WHERE " + decidable + ")", Args: []any{id}},
 			{SQL: "DELETE FROM reply_records WHERE outbox_id = (SELECT id FROM outbox WHERE " + decidable + ")", Args: []any{id}},
 			{SQL: "DELETE FROM outbox WHERE " + decidable, Args: []any{id}}})
@@ -307,6 +309,9 @@ func (s *Service) processOutbox(ctx context.Context, recv backend.Receiver, acco
 	if err != nil {
 		return err
 	}
+	if known {
+		sa.sent = &sent
+	}
 	keep, err := s.localSent(ctx, accountID)
 	if err != nil {
 		return err
@@ -321,6 +326,7 @@ func (s *Service) processOutbox(ctx context.Context, recv backend.Receiver, acco
 		if beforeOutboxItem != nil {
 			beforeOutboxItem(o.id)
 		}
+		var snd backend.Sender
 		switch o.state {
 		case "queued":
 			if o.queuedAt < start-OutboxExpiry.Milliseconds() {
@@ -336,7 +342,8 @@ func (s *Service) processOutbox(ctx context.Context, recv backend.Receiver, acco
 				if _, err := sa.credentials(ctx); err != nil {
 					return err
 				}
-				ok, err = s.sendItem(ctx, wctx, sa.sender(), acc.Email, o)
+				snd = sa.sender()
+				ok, err = s.sendItem(ctx, wctx, snd, acc.Email, o)
 			}
 			if errors.Is(err, backend.ErrAuthFailed) {
 				// Not this message's fault: it is queued again, uncharged, and the
@@ -356,7 +363,12 @@ func (s *Service) processOutbox(ctx context.Context, recv backend.Receiver, acco
 			o.state = "sent"
 			fallthrough
 		case "sent", "archive_uncertain":
-			saves := sa.sender().SavesSent()
+			saves := false
+			if snd != nil {
+				saves = snd.SavesSent()
+			} else if o.state == "sent" && acc.Sending.Protocol != auth.JMAP {
+				saves = sa.sender().SavesSent()
+			}
 			if !known && !saves {
 				continue
 			}
@@ -403,6 +415,7 @@ var graphSendURL = graph.SendURL
 type sendAuth struct {
 	s         *Service
 	acc       Account
+	sent      *backend.FolderRef   // resolved Sent folder when folders are known; nil before first sync
 	ver       uint64               // cur's credential version
 	cur       *backend.Credentials // nil until read, and after retry
 	rejected  string               // an access token the server refused
@@ -431,9 +444,17 @@ func (a *sendAuth) credentials(ctx context.Context) (backend.Credentials, error)
 func (a *sendAuth) sender() backend.Sender {
 	switch a.acc.Sending.Protocol {
 	case auth.Graph:
-		return graph.New(graphSendURL, a.credentials)
+		u := graphSendURL
+		if a.acc.Receiving.Protocol == auth.Graph {
+			u = graphURL(a.acc.Receiving) + "/me/sendMail"
+		}
+		return graph.New(u, a.credentials)
 	case auth.EWS:
 		return ews.NewSender(ews.Config{URL: ewsURL(a.acc), Credentials: a.credentials})
+	case auth.GmailAPI:
+		return gmailapi.NewSender(gmailapi.Config{BaseURL: slotURL(a.acc.Receiving, a.acc.Receiving.Path), Credentials: a.credentials})
+	case auth.JMAP:
+		return jmap.NewSender(jmap.Config{SessionURL: sessionURL(a.acc.Receiving), Credentials: a.credentials, SentFolder: a.sent})
 	}
 	return a.smtp()
 }
@@ -451,7 +472,7 @@ func (a *sendAuth) smtp() *smtpbackend.Sender {
 func (a *sendAuth) retry(ctx context.Context, err error) bool {
 	switch {
 	case a.s.toGraph(ctx, &a.acc, err):
-	case errors.Is(err, backend.ErrAuthFailed) && a.cur != nil && a.cur.Token != "" && !a.refreshed:
+	case errors.Is(err, backend.ErrAuthFailed) && a.acc.AuthType == "oauth" && a.cur != nil && a.cur.Token != "" && !a.refreshed:
 		a.refreshed, a.rejected = true, a.cur.Token
 	default:
 		return false
@@ -621,6 +642,8 @@ var outboxFrom = map[string][]string{
 // since it was read (resolved, discarded, cancelled) is left alone. Entering
 // sent or send_uncertain the message may have gone out: its draft is deleted
 // in the same transaction, never to be sent again (draft_id becomes NULL).
+// DurableTransaction syncs the WAL so a power loss after sending cannot roll a
+// claimed item back to queued (ADR 0006).
 func (s *Service) moveOutbox(ctx context.Context, o outboxRow, to string, from []string, set string, args ...any) (bool, error) {
 	whereArgs := []any{o.id}
 	for _, f := range from {
@@ -640,7 +663,7 @@ func (s *Service) moveOutbox(ctx context.Context, o outboxRow, to string, from [
 	}
 	stmts = append(stmts, sqlite.Statement{SQL: "UPDATE outbox SET state = ?" + set + where,
 		Args: append(append([]any{to}, args...), whereArgs...)})
-	rs, err := s.db.Transaction(ctx, stmts)
+	rs, err := s.db.DurableTransaction(ctx, stmts)
 	if err != nil || rs[len(rs)-1].Changes != 1 {
 		return false, err
 	}

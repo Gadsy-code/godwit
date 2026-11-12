@@ -846,3 +846,35 @@ func TestAvatarDiscoveryGeneration(t *testing.T) {
 		t.Fatalf("fresh discovery requests = %d", hits.Load())
 	}
 }
+
+// PruneUnused deletes the images nobody has read since a cutoff, and only those.
+func TestPruneUnused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, _ := strconv.Atoi(r.URL.Path[1:])
+		w.Write(pngOf(t, n, n))
+	}))
+	defer srv.Close()
+	c := open(t, t.TempDir(), 0)
+	for _, n := range []int{40, 41} {
+		if _, err := c.Get(t.Context(), srv.URL+"/"+strconv.Itoa(n)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-20 * 24 * time.Hour)
+	c.mu.Lock()
+	c.files[Key(srv.URL+"/40")].used = old
+	c.mu.Unlock()
+
+	if n := c.PruneUnused(time.Now().Add(-14 * 24 * time.Hour)); n != 1 {
+		t.Fatalf("pruned %d, want the one unused for 20 days", n)
+	}
+	if c.Cached(srv.URL+"/40") || !c.Cached(srv.URL+"/41") {
+		t.Errorf("40 cached=%v, 41 cached=%v", c.Cached(srv.URL+"/40"), c.Cached(srv.URL+"/41"))
+	}
+	if des, _ := os.ReadDir(c.dir); len(des) != 1 {
+		t.Errorf("%d files left, want 1", len(des))
+	}
+	if n := c.PruneUnused(time.Now().Add(-14 * 24 * time.Hour)); n != 0 {
+		t.Errorf("a second pass pruned %d", n)
+	}
+}

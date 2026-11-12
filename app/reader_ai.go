@@ -967,9 +967,9 @@ func (r *reader) replyBar(c *ui.Context) ui.Element {
 			if st := r.ai[target.ID]; st != nil && r.taskReady("") && r.p.a.settings.QuickReplies {
 				r.fetchErr(c, st.quick.err, st.quick.loading, func() { r.loadQuick(target.ID, true) })
 				if len(st.quick.v) > 0 {
-					availW := float32(theme.ReaderMaxWidth)
+					availW := r.p.a.readerMaxWidth()
 					if r.pane.W > 0 {
-						availW = min(theme.ReaderMaxWidth, r.pane.W-2*th.Space(7))
+						availW = min(r.p.a.readerMaxWidth(), r.pane.W-2*th.Space(7))
 					}
 					labels := fitQuickLabels(c, st.quick.v, availW)
 					ui.Row(c).Gap(th.Space(1)).Role(ui.RoleGroup).Label(i18n.T("reader.ai.quick")).Children(func() {

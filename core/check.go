@@ -14,6 +14,8 @@ import (
 	"github.com/godwit-email/godwit/backend"
 	"github.com/godwit-email/godwit/backend/conn"
 	"github.com/godwit-email/godwit/backend/ews"
+	"github.com/godwit-email/godwit/backend/gmailapi"
+	"github.com/godwit-email/godwit/backend/graph"
 	"github.com/godwit-email/godwit/backend/imapbackend"
 	"github.com/godwit-email/godwit/backend/jmap"
 	"github.com/godwit-email/godwit/backend/pop3"
@@ -33,8 +35,10 @@ const (
 )
 
 // CheckStep is one item of a connection check. Name is settings, imap (jmap
-// for a JMAP account, ews for an EWS one) or smtp; an EWS account sends
-// through the server it receives from, so its check has no smtp step.
+// for a JMAP account, ews for an EWS one, pop3 for a POP3 one) and the sending
+// step: smtp, or jmap_send for a JMAP account (whose session must allow email
+// submission). An EWS account sends through the server it receives from, so
+// its check has no sending step.
 // Detail comes from conn's already redacted errors: no password, token or server text.
 type CheckStep struct {
 	Name    string
@@ -70,9 +74,9 @@ func (r CheckReport) OK() bool {
 	return len(r.Steps) > 0
 }
 
-// OnlySMTPFailed reports whether settings and imap passed and smtp failed:
-// what AccountInput.ReceiveOnly lets through.
-func (r CheckReport) OnlySMTPFailed() bool {
+// OnlySendingFailed reports whether settings and the receiving step passed and
+// the sending step failed: what AccountInput.ReceiveOnly lets through.
+func (r CheckReport) OnlySendingFailed() bool {
 	return len(r.Steps) == 3 && r.Steps[0].OK && r.Steps[1].OK && !r.Steps[2].OK && !r.Steps[2].Skipped
 }
 
@@ -104,6 +108,9 @@ func (s *Service) CheckAccount(ctx context.Context, in AccountInput) (CheckRepor
 	if err := s.allowPOP3(ctx, &in); err != nil {
 		return CheckReport{}, err
 	}
+	if err := s.allowGmailAPI(ctx, &in); err != nil {
+		return CheckReport{}, err
+	}
 	r, _ := s.check(ctx, in, "")
 	return r, ctx.Err()
 }
@@ -111,8 +118,9 @@ func (s *Service) CheckAccount(ctx context.Context, in AccountInput) (CheckRepor
 // check returns the report and the first failing step's underlying error.
 // token is a stored OAuth account's access token, used instead of in.Password.
 func (s *Service) check(ctx context.Context, in AccountInput, token string) (CheckReport, error) {
+	fillGmailAPISlot(&in)
 	r := CheckReport{Steps: []CheckStep{{Name: "settings"}, {Name: in.receiving()}, {Name: "smtp"}}}
-	var first error
+	var first, noSend error // noSend: the JMAP session receives but may not send
 	fail := func(i int, kind conn.FailureKind, err error) {
 		r.Steps[i].Kind, r.Steps[i].Detail, first = kind, capDetail(err.Error()), err
 	}
@@ -123,15 +131,18 @@ func (s *Service) check(ctx context.Context, in AccountInput, token string) (Che
 				return KindInvalid, err
 			}
 			if in.OAuthFlowID == "" {
+				if in.receiving() == auth.Graph && token == "" {
+					return KindInvalid, errors.New("an OAuth sign-in needs an OAuth flow")
+				}
 				if in.Password == "" && token == "" {
 					return KindInvalid, errors.New("password is required")
-				}
-				if in.Receiving.Auth == AuthAPIToken && in.SendPassword == "" {
-					return KindInvalid, errors.New("the sending password is required: an API token does not sign in to SMTP")
 				}
 				return KindInvalid, nil
 			}
 			g, err := s.flowGrant(in) // peeked: AddAccount still needs it
+			if err == nil && in.receiving() == auth.GmailAPI {
+				err = validGmailAPIGrant(g)
+			}
 			user, token = g.Email, g.AccessToken
 			graph = func(ctx context.Context) error {
 				cfg, err := oauthConfig(g.provider)
@@ -144,12 +155,28 @@ func (s *Service) check(ctx context.Context, in AccountInput, token string) (Che
 				_, err = graphGrant(ctx, cfg, g.RefreshToken)
 				return err
 			}
+			if err == nil && in.receiving() == auth.Graph {
+				cfg, cerr := oauthConfig(g.provider)
+				if cerr != nil {
+					return KindInvalid, cerr
+				}
+				if cfg.GraphRead == "" {
+					return KindInvalid, errNoGraphRead
+				}
+			}
 			return KindInvalid, err
 		},
 		func() (conn.FailureKind, error) {
 			cr := backend.Credentials{Username: user, Password: in.Password, Token: token}
 			if in.Receiving.Auth == AuthAPIToken {
 				cr = backend.Credentials{Username: user, Token: in.Password}
+			}
+			if in.receiving() == auth.Graph && in.OAuthFlowID != "" {
+				tok, err := s.flowGraphToken(ctx, in.OAuthFlowID)
+				if err != nil {
+					return conn.Classify(err), err
+				}
+				cr.Token = tok
 			}
 			if in.receiving() == auth.EWS && in.Receiving.Host == "" {
 				if kind, err := s.discover(ctx, &in, &r, cr); err != nil {
@@ -162,6 +189,9 @@ func (s *Service) check(ctx context.Context, in AccountInput, token string) (Che
 			defer cancel()
 			c, err := recv.Check(ctx)
 			r.Folders, r.Host, r.desc = c.Folders, c.Host, c.Description
+			if errors.Is(err, jmap.ErrNoSubmission) { // the jmap_send step's failure
+				noSend, err = err, nil
+			}
 			return conn.Classify(err), err
 		},
 		func() (conn.FailureKind, error) {
@@ -183,8 +213,12 @@ func (s *Service) check(ctx context.Context, in AccountInput, token string) (Che
 			return conn.Classify(err), err
 		},
 	}
-	if in.receiving() == auth.EWS {
+	switch in.receiving() {
+	case auth.EWS, auth.Graph, auth.GmailAPI:
 		r.Steps, steps = r.Steps[:2], steps[:2]
+	case auth.JMAP: // it sends through the session it signed in to
+		r.Steps[2].Name = "jmap_send"
+		steps[2] = func() (conn.FailureKind, error) { return conn.Classify(noSend), noSend }
 	}
 	for i, run := range steps {
 		if first != nil {
@@ -258,8 +292,51 @@ func newReceiver(srv Server, email string, creds backend.CredentialsFunc) backen
 		return ews.New(ews.Config{URL: slotURL(srv, srv.Path), Address: email, Credentials: creds})
 	case auth.POP3:
 		return pop3.New(pop3.Config{Host: srv.Host, Port: srv.Port, Security: srv.Security, Credentials: creds})
+	case auth.Graph:
+		return graph.NewReceiver(graph.Config{URL: graphURL(srv), Credentials: creds})
+	case auth.GmailAPI:
+		return gmailapi.New(gmailapi.Config{BaseURL: slotURL(srv, srv.Path), Credentials: creds})
 	}
 	return imapbackend.New(imapbackend.Config{Host: srv.Host, Port: srv.Port, Security: srv.Security, Credentials: creds})
+}
+
+// graphURL is a Graph slot's API root (/v1.0 by default).
+func graphURL(srv Server) string {
+	return slotURL(srv, cmp.Or(srv.Path, "/v1.0"))
+}
+
+// flowGraphToken exchanges flowID's refresh token for a Microsoft Graph access
+// token carrying both GraphRead and GraphSend.
+func (s *Service) flowGraphToken(ctx context.Context, flowID string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	s.oauthMu.Lock()
+	g, ok := s.grants[flowID]
+	s.oauthMu.Unlock()
+	if !ok {
+		return "", ErrUnknownFlow
+	}
+	cfg, err := oauthConfig(g.provider)
+	if err != nil {
+		return "", err
+	}
+	if g.client.ID != "" {
+		cfg.ClientID, cfg.ClientSecret = g.client.ID, g.client.Secret
+	}
+	gg, err := graphAccountGrant(ctx, cfg, g.RefreshToken)
+	if err != nil {
+		return "", err
+	}
+	if gg.RefreshToken != "" {
+		s.oauthMu.Lock()
+		if cur, ok := s.grants[flowID]; ok {
+			cur.RefreshToken = gg.RefreshToken
+			s.grants[flowID] = cur
+		}
+		s.oauthMu.Unlock()
+	}
+	keychainValues.Add(gg.AccessToken)
+	return gg.AccessToken, nil
 }
 
 // ewsURL is an EWS account's EWS URL, which it sends through too: the

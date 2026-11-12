@@ -188,7 +188,9 @@ func AvatarImage(c *ui.Context, name string, image ui.ImageSource) ui.Element {
 		return Avatar(c, name)
 	}
 	t, th := theme.Of(c), c.Theme()
-	return ui.Box(c).Size(th.Space(8), th.Space(8)).Shrink(0).Radius(t.Radius.Lg).Clip().Label(name).Children(func() {
+	// On the mark tile: a logo with a transparent background (a dark favicon, say)
+	// would vanish on the dark theme.
+	return ui.Box(c).Size(th.Space(8), th.Space(8)).Shrink(0).Radius(t.Radius.Lg).Clip().Background(t.MarkTile).Label(name).Children(func() {
 		ui.Image(c, image).Size(th.Space(8), th.Space(8)).Fit(ui.Cover)
 	})
 }

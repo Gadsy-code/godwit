@@ -31,8 +31,8 @@ require (
 	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.47.0
 	golang.org/x/net v0.62.0
-	golang.org/x/oauth2 v0.37.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/oauth2 v0.38.0
+	golang.org/x/sys v0.50.0
 	golang.org/x/text v0.43.0
 )
 
@@ -65,4 +65,4 @@ tool github.com/egoist/mygo/cmd/mygo
 
 replace github.com/emersion/go-imap/v2 => github.com/godwit-email/go-imap/v2 v2.0.0-beta.8.godwit.6
 
-replace git.sr.ht/~rockorager/go-jmap => github.com/godwit-email/go-jmap v0.5.4-godwit.2
+replace git.sr.ht/~rockorager/go-jmap => github.com/godwit-email/go-jmap v0.5.4-godwit.3

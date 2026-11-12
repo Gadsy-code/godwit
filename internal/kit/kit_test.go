@@ -1528,3 +1528,21 @@ func TestRadioCardClicks(t *testing.T) {
 		t.Fatal("a click on the help did not choose the card")
 	}
 }
+
+// A sender's logo with a transparent background (a dark favicon, say) sits on the
+// mark tile, so it shows on the dark theme instead of vanishing into it.
+func TestKitAvatarImageTransparentLogoOnDarkTheme(t *testing.T) {
+	logo := image.NewRGBA(image.Rect(0, 0, 64, 64)) // every pixel transparent
+	tt := ui.NewTester(func(c *ui.Context) {
+		theme.Apply(c, theme.FromSettings(core.Settings{Theme: "dark", Density: "compact", FontSize: 14, BodyFontSize: 14}, true))
+		ui.Column(c).Padding(8).Background(theme.Of(c).Background).Children(func() { AvatarImage(c, "Alice", ui.NewBitmap(logo)) })
+	}, 100, 100)
+	r, ok := tt.Find("Alice")
+	if !ok {
+		t.Fatal("avatar not found")
+	}
+	center := tt.Image().RGBAAt(int(r.X+r.W/2), int(r.Y+r.H/2))
+	if center.R < 200 || center.G < 200 || center.B < 200 {
+		t.Errorf("the logo's tile is %v, want a light one", center)
+	}
+}

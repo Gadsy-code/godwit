@@ -812,6 +812,15 @@ func (p *settingsPage) remoteImagesView(c *ui.Context) {
 					}
 				})
 			})
+		},
+		func() {
+			settingRow(c, i18n.T("settings.remote_images.keep"), i18n.T("settings.remote_images.keep.help"), func() {
+				opts := []kit.Option[int]{{Value: 0, Label: i18n.T("settings.remote_images.keep.forever")}}
+				for _, days := range []int{7, 14, 30, 90} {
+					opts = append(opts, kit.Option[int]{Value: days, Label: i18n.Tf("settings.remote_images.keep.days", days)})
+				}
+				settingSelect(c, i18n.T("settings.remote_images.keep"), &p.st.ImageRetentionDays, opts)
+			})
 		})
 }
 

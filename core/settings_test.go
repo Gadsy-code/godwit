@@ -24,8 +24,8 @@ func TestSettingsDefaults(t *testing.T) {
 	s := settingsService(t, t.TempDir(), "")
 	got, err := s.GetSettings(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, Settings{Theme: "system", Density: "compact", FontSize: 14, SettingsVersion: 4, ReplyLanguage: "match",
-		KeepInBackground: true, ShowTrayIcon: true, UnreadOnAppIcon: true, NotifyNewMail: true, NotifyPreview: true, ThreadView: true, ThreadCollapse: true, ThreadCollapseThreshold: 5, RemoteImages: "auto", AutoLabel: true, LabelDisplay: "both", JudgeThreshold: 0.8, LightBackground: true,
+	assert.Equal(t, Settings{Theme: "system", Density: "compact", FontSize: 14, SettingsVersion: 5, ReplyLanguage: "match",
+		KeepInBackground: true, ShowTrayIcon: true, UnreadOnAppIcon: true, NotifyNewMail: true, NotifyPreview: true, ThreadView: true, ThreadCollapse: true, ThreadCollapseThreshold: 5, RemoteImages: "auto", AutoLabel: true, LabelDisplay: "both", JudgeThreshold: 0.8, BackgroundSync: "inbox",
 		MCPSend: "confirm", Masking: true, MaskCategories: defaultMaskCategories(),
 		SecurityWarnings: true, VerifiedBadge: true, ProxyMode: "system"}, got)
 }
@@ -247,6 +247,23 @@ func TestSettingsFontMigration(t *testing.T) {
 	}
 }
 
+// Version 4's LightBackground switch turned off keeps every folder syncing.
+func TestSettingsBackgroundSyncMigration(t *testing.T) {
+	for stored, want := range map[string]string{
+		`{"LightBackground":false,"SettingsVersion":4}`: BackgroundSyncAll,
+		`{"LightBackground":true,"SettingsVersion":4}`:  BackgroundSyncInbox,
+		`{"SettingsVersion":4}`:                         BackgroundSyncInbox,
+		`{"LightBackground":false,"SettingsVersion":5}`: BackgroundSyncInbox,
+	} {
+		s := settingsService(t, t.TempDir(), "")
+		_, err := s.db.Execute(t.Context(), "INSERT INTO settings(key, value) VALUES ('app', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", stored)
+		require.NoError(t, err)
+		got, err := s.GetSettings(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, want, got.BackgroundSync, stored)
+	}
+}
+
 func TestSettingsVersionStamped(t *testing.T) {
 	s := settingsService(t, t.TempDir(), "")
 	in, _ := s.GetSettings(t.Context())
@@ -268,4 +285,54 @@ func TestSettingsTypeMismatchErrors(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.GetSettings(t.Context())
 	assert.ErrorContains(t, err, "stored settings")
+}
+
+// How long cached remote images are kept unused. 0 keeps them until the cache is full.
+func TestSettingsImageRetention(t *testing.T) {
+	s := settingsService(t, t.TempDir(), "")
+	st, err := s.GetSettings(t.Context())
+	require.NoError(t, err)
+	assert.Zero(t, st.ImageRetentionDays, "off by default")
+
+	st.ImageRetentionDays = 14
+	got, err := s.SetSettings(t.Context(), st)
+	require.NoError(t, err)
+	assert.Equal(t, 14, got.ImageRetentionDays)
+
+	for _, days := range []int{-1, 366} {
+		in := got
+		in.ImageRetentionDays = days
+		_, err := s.SetSettings(t.Context(), in)
+		assert.Error(t, err, "%d days", days)
+	}
+}
+
+// Layout choices: where the sidebar puts its sections, what leads a list row, how
+// wide the reading column may grow. Empty is upstream's way of each.
+func TestSettingsLayout(t *testing.T) {
+	s := settingsService(t, t.TempDir(), "")
+	st, err := s.GetSettings(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"views", "labels", "accounts"}, SidebarOrder(st), "the default order")
+
+	st.SidebarOrder, st.ListRowOrder, st.ReaderWidth = "accounts,labels,views", ListRowSubject, ReaderWidthWide
+	got, err := s.SetSettings(t.Context(), st)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"accounts", "labels", "views"}, SidebarOrder(got))
+	assert.Equal(t, ListRowSubject, got.ListRowOrder)
+	assert.Equal(t, ReaderWidthWide, got.ReaderWidth)
+
+	for name, mod := range map[string]func(*Settings){
+		"a section missing":  func(x *Settings) { x.SidebarOrder = "accounts,labels" },
+		"a section twice":    func(x *Settings) { x.SidebarOrder = "accounts,accounts,views" },
+		"an unknown section": func(x *Settings) { x.SidebarOrder = "accounts,labels,folders" },
+		"list rows":          func(x *Settings) { x.ListRowOrder = "date" },
+		"reader width":       func(x *Settings) { x.ReaderWidth = "huge" },
+	} {
+		in := got
+		mod(&in)
+		_, err := s.SetSettings(t.Context(), in)
+		assert.Error(t, err, name)
+	}
+	assert.Equal(t, []string{"views", "labels", "accounts"}, SidebarOrder(Settings{SidebarOrder: "garbage"}), "an unusable value falls back to the default")
 }

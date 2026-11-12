@@ -20,7 +20,7 @@ const (
 type AccountInput struct {
 	Email, Name, Alias, Signature, Username, Password string // Password: Receiving.Auth's secret, an API token for AuthAPIToken
 	// SendPassword is the sending server's own password; "" signs in to it
-	// with Password, which an API token cannot.
+	// with Password.
 	SendPassword       string
 	IsDefault          bool
 	Sync               *SyncRange // nil: the newest 2000 per folder
@@ -40,8 +40,9 @@ type AccountInput struct {
 	oauthClientID  string // the flow's own client, set by AddAccount
 	// graph checks a stored OAuth account can send through Microsoft Graph, for
 	// a check whose SMTP AUTH is disabled; a flow's check makes its own.
-	graph     func(context.Context) error
-	allowPOP3 bool // a POP3 receiving slot is accepted: a stored account's, or ExperimentalPOP3 is on
+	graph         func(context.Context) error
+	allowPOP3     bool // a POP3 receiving slot is accepted: a stored account's, or ExperimentalPOP3 is on
+	allowGmailAPI bool // a Gmail API receiving slot is accepted: a stored account's, or ExperimentalGmailAPI is on
 }
 
 // Account is a stored account. The password lives only in the system keychain.
@@ -98,9 +99,13 @@ type ServerSettings struct {
 
 // Server is one of an account's two server slots, receiving and sending: a
 // protocol and where its server is. Receiving is auth.IMAP, auth.JMAP
-// (only with Settings.ExperimentalJMAP to add one) or auth.POP3 (only with
-// Settings.ExperimentalPOP3) and sending auth.SMTP;
-// an empty Protocol in input is auth.IMAP and auth.SMTP.
+// (only with Settings.ExperimentalJMAP to add one), auth.EWS (only with
+// Settings.ExperimentalEWS to add one), auth.POP3 (only with
+// Settings.ExperimentalPOP3) or auth.Graph (only with
+// Settings.ExperimentalGraph). JMAP, EWS and Graph accounts send through their
+// receiving protocol; other accounts send through auth.SMTP (or auth.Graph
+// once OAuth SMTP AUTH is refused). An empty Protocol in input is auth.IMAP
+// and auth.SMTP.
 type Server struct {
 	Protocol string
 	Host     string
@@ -112,7 +117,7 @@ type Server struct {
 	// Autodiscover from the address. Other protocols have none.
 	Path string
 	// Auth is how the slot signs in: AuthPassword ("" in input), AuthAPIToken
-	// (JMAP receiving only) or AuthOAuth, which only an OAuth flow sets.
+	// (JMAP only) or AuthOAuth, which only an OAuth flow sets.
 	Auth string
 }
 

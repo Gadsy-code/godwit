@@ -32,12 +32,28 @@ type jmapServer struct{ *testmail.JMAP }
 func (s jmapServer) Receiver(t *testing.T) backend.Receiver {
 	return jmapReceiver(t, s.JMAP, s.SessionURL())
 }
+func (s jmapServer) Sender(_ *testing.T) backend.Sender {
+	return jmap.NewSender(jmap.Config{SessionURL: s.SessionURL(), Credentials: func(context.Context) (backend.Credentials, error) {
+		return backend.Credentials{Username: "alice", Password: s.Password()}, nil
+	}})
+}
+func (s jmapServer) Accepted(_ *testing.T) []backendtest.Delivery {
+	subs := s.Submissions()
+	out := make([]backendtest.Delivery, len(subs))
+	for i, sub := range subs {
+		out[i] = backendtest.Delivery{Rcpts: sub.RcptTo, Raw: sub.Raw}
+	}
+	return out
+}
+func (s jmapServer) Refuse(_ *testing.T, rcpt string)                { s.RefuseRecipient(rcpt) }
+func (s jmapServer) LoseVerdict(*testing.T)                          { s.LoseNextSubmission() }
 func (s jmapServer) Deliver(_ *testing.T, folder string, raw []byte) { s.JMAP.Deliver(folder, raw) }
 func (s jmapServer) Reset(*testing.T, string)                        { s.ExpireState() }
 func (s jmapServer) RejectAuth(*testing.T)                           { s.JMAP.RejectAuth() }
 
 func TestJMAPBackendContract(t *testing.T) {
 	backendtest.Run(t, func(t *testing.T) backendtest.Server { return jmapServer{testmail.StartJMAP(t)} })
+	backendtest.RunSender(t, func(t *testing.T) backendtest.SendServer { return jmapServer{testmail.StartJMAP(t)} })
 }
 
 func tctx(t *testing.T) context.Context {
@@ -178,6 +194,41 @@ func TestJMAPMergedIDChanges(t *testing.T) {
 	}
 	if !gone[backend.MessageRef(a)] || !gone[backend.MessageRef(b)] || !appeared {
 		t.Errorf("after a merge got %+v; want %s and %s gone and %s appeared with content", cs, a, b, merged)
+	}
+}
+
+// Mail that changed on the server and is not held (outside the window) is a
+// backfill; only mail the server lists as created is a new arrival.
+func TestJMAPUpdatedMailIsNotAnArrival(t *testing.T) {
+	s := testmail.StartJMAP(t)
+	old := s.Deliver("INBOX", backendtest.Message("old@example.com", "old"))
+	r := jmapReceiver(t, s, s.SessionURL())
+	_, cur, err := jmapSync(t, r, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Changed elsewhere (read in webmail), then new mail arrives.
+	at := backend.Location{Folder: backend.FolderRef(s.Inbox), Ref: backend.MessageRef(old), ServerID: string(old)}
+	if _, err := r.Apply(tctx(t), backend.SetFlags{At: at, Add: backend.Flags{Seen: true}}); err != nil {
+		t.Fatal(err)
+	}
+	fresh := s.Deliver("INBOX", backendtest.Message("new@example.com", "new"))
+
+	cs, _, err := jmapSync(t, r, cur, held{}) // local storage holds neither
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[backend.MessageRef]bool{} // ref -> Backfill
+	for _, c := range cs {
+		if m, ok := c.(backend.MessageAppeared); ok {
+			got[m.Ref] = m.Backfill
+		}
+	}
+	if backfill, ok := got[backend.MessageRef(old)]; !ok || !backfill {
+		t.Errorf("changed mail not held: appeared %v, backfill %v; want it as a backfill", ok, backfill)
+	}
+	if backfill, ok := got[backend.MessageRef(fresh)]; !ok || backfill {
+		t.Errorf("new mail: appeared %v, backfill %v; want it as a new arrival", ok, backfill)
 	}
 }
 

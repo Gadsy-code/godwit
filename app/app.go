@@ -501,8 +501,8 @@ func (a *App) load() {
 			if !sameSettings(old, st) {
 				a.settingsEffects(old, st)
 			}
-			a.mail.reader.refreshAvatars()
 		}
+		a.mail.reader.refreshAvatars() // after any invalidation above; loadAvatar holds them while a local change is unsaved
 		a.syncLocalAPI()
 		a.refreshTasks() // skills or services may have changed too
 		a.inboxUnread = inbox
@@ -632,13 +632,13 @@ func (a *App) SetForeground(on bool) {
 	if on {
 		a.plat.ShowSignInCode(nil)
 	}
-	a.applyLightBackground(a.settings)
+	a.applyBackgroundSync(a.settings)
 }
 
-// applyLightBackground narrows the Service's syncs to the inbox while the
-// window is behind another one, if st asks for it.
-func (a *App) applyLightBackground(st core.Settings) {
-	a.svc.SetLightBackground(st.LightBackground && !a.foreground)
+// applyBackgroundSync narrows the Service's syncs to the inbox while the
+// window is behind another one, unless st syncs every folder there.
+func (a *App) applyBackgroundSync(st core.Settings) {
+	a.svc.SetInboxOnly(st.BackgroundSync != core.BackgroundSyncAll && !a.foreground)
 }
 
 // OnUI posts f to the UI thread unless the App has closed by then, for

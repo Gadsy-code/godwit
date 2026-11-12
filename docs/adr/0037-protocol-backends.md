@@ -42,7 +42,7 @@ status: proposed
 - **为什么先做 JMAP**：它对接缝的检验最强（账户级游标、一封邮件在多个 mailbox、推送、服务器自动存已发送、下载主机和 API 主机不同）；用户出了问题可以随时退回 IMAP。EWS 和 POP3 等接缝验证过之后，各自另开工作（EWS 见下文）。
 - **实现与维护**：由维护者实现并维护，#481 的贡献者帮忙实测和评审。JMAP 先作为实验性功能上线，要在设置里打开才能添加 JMAP 账户。如果以后停止维护，就退回实验性：停止添加新账户，并提示已有账户改用 IMAP。
 - **主机与凭据**：信任 session 给出的主机；HTTP 重定向只跟随同一主机的，添加账户时的 `/.well-known/jmap` 除外。添加账户时显示 session 主机。第一版的认证方式是 Basic 和 Bearer。同步流量和 IMAP 一样算账户配置，不走外发审批。
-- **第一版范围**：发信走 SMTP；已有的 IMAP 账户不能原地切换成 JMAP。
+- **第一版范围**：JMAP 账户收信、发信都走 JMAP：发信用 `EmailSubmission/set` 加 `onSuccessUpdateEmail`，由服务器把副本归入已发送，会话不支持 `urn:ietf:params:jmap:submission` 时（比如 API 令牌没有发信权限），只有检查里的发信这一步失败，账户只能以仅收信方式添加或保留。已有的 IMAP 账户不能原地切换成 JMAP。
 - **客户端库**：用 `godwit-email/go-jmap`，它是 `git.sr.ht/~rockorager/go-jmap` 的 fork。规矩和 go-imap fork 一样，内存 JMAP 服务器也放在这个 fork 里。
 
 ## EWS
@@ -54,6 +54,25 @@ EWS 是接在这个接缝上的第二种协议，设计过程记在 #634 及其�
 - **认证**：只做 NTLMv2 和 Basic。邮件地址和登录名分开填写。
 - **主机与凭据**：凭据只通过 HTTPS 发送。Autodiscover 要跳到邮件地址所在可注册域名以外的主机时，先在添加账户界面显示目标主机，用户确认后才把凭据发过去。JMAP 不需要这一步，因为它的 session 主机是用户自己填的地址给出的；而 Autodiscover 的 302、SRV 记录和 `redirectUrl` 都可能把凭据带到别人的服务器。EWS URL 确定后，后端只跟随同一主机的重定向。
 - **服务器怪异行为**：EWS 没有可以 fork 的 Go 协议库，所以后端在 `backend/ews` 里手写一层薄 SOAP。服务器的怪异行为就修在这一层，每一处都配一个复现测试。这是「修在协议库 fork 里」这条规矩的例外。NTLM 库（Azure/go-ntlmssp）的问题仍然修在它的 fork 里。
+
+## Microsoft Graph
+
+Microsoft Graph 收信后端（`backend/graph`）让新添加的 Outlook 个人账户完全不走 IMAP 和 SMTP，收发都走 Graph REST API。
+
+- **上线方式**：先作为实验性功能（`ExperimentalGraph`）上线，只在新添加 Outlook 账户时提供选择；已有的 IMAP 账户不原地切换。Graph 账户的发信槽固定为 `graph`，用 `sendMail` 投递并由服务器自动存已发送副本。
+- **权限与已有账户**：Outlook 的 OAuth 授权范围加入 `Mail.ReadWrite`。按 Microsoft 单一令牌只能对应单一资源的规定，初始授权码仍换取 `outlook.office.com` 令牌，Graph 收发令牌再由账户的 refresh token 单独换取。因此旧版已添加、未授权过 `Mail.ReadWrite` 的 IMAP 账户刷新令牌时仍只请求 `outlook.office.com` 权限，继续正常工作；若 Graph 账户缺少 `Mail.ReadWrite` 授权或令牌失效，直接走现有的「需要重新授权」流程。
+- **身份、游标与轮询**：所有请求固定带 `Prefer: IdType="ImmutableId"`，跨文件夹移动后邮件 id 不变，身份属于「账户内稳定」。账户级游标取 `/me/mailFolders/delta` 的 `deltaLink`，文件夹级游标取各文件夹 `/me/mailFolders/{id}/messages/delta` 的 `deltaLink`；`deltaLink` 失效（HTTP 410 或 `syncStateNotFound`）时报「文件夹重置」。桌面端无法接收 Graph 的 webhook 推送，`Watch` 返回不支持，按每 1 分钟轮询。
+- **内容与写回**：整封邮件通过 `/me/messages/{id}/$value` 拉取原始 MIME，部件结构由 `backend/graph` 自行解析。已读和旗标用 `PATCH` 更新 `isRead` 与 `flag`，移动用 `/move`，删除移入 `deleteditems`、永久删除用 `/permanentDelete`；自定义关键字映射到 Outlook `categories`（在能力表里声明为「支持但有说明」）。同一账户的请求串行发送，遇到 429 或 503 按 `Retry-After` 退避重试。
+
+## Gmail API
+
+`backend/gmailapi` 对接 Gmail REST API v1（`https://gmail.googleapis.com`），面向防火墙封禁 IMAP/SMTP 端口、只能走 HTTPS 的 Gmail 用户。
+
+- **上线方式与登录限制**：先作为实验性功能（`ExperimentalGmailAPI`）。Gmail API 只接受 OAuth（不支持应用专用密码），且要求客户端所在的 Google Cloud 项目显式启用 `gmail.googleapis.com`；Mozilla 为 Thunderbird 注册的公开客户端只用于 IMAP/POP3/SMTP XOAUTH2，因此本后端只对新添加、且使用用户自己创建的 Google Cloud OAuth 客户端的 Gmail 账户开放，已有账户不能原地切换。现有的 `https://mail.google.com/` scope 已覆盖全部接口权限。
+- **收信、文件夹与身份**：Gmail 标签映射为文件夹（`server_ref` 为 label ID）；`UNREAD` 拆成 `Seen` 标记，`STARRED` 同时映射为 `flagged` 角色文件夹与 `Flagged` 标记，`IMPORTANT` 作为普通文件夹，`CHAT` 与 `CATEGORY_*` 忽略；补一个合成的 `[Gmail]/All Mail`（`RoleAll`）承载所有非垃圾邮件、非废纸篓、非草稿的邮件，和 Gmail IMAP 的多位置与归档语义对齐（[0034](0034-message-and-its-locations.md)）。邮件身份取不可变的 `message.id`（`IdentityStable`）。
+- **同步、推送与发信**：初次同步按窗口调 `messages.list`；增量调 `history.list?startHistoryId=`，以 `historyId` 作账户级游标；`historyId` 过期（HTTP 404）时按文件夹发出 `FolderSnapshot` 做全量核对，不重置已有邮件身份。Gmail API 推送依赖 Cloud Pub/Sub，桌面端无法直接接收，因此 `Watch` 返回 `ErrUnsupported`、轮询间隔 1 分钟。发信槽调 `users.messages.send`（`SavesSent() == true`）。
+- **主机、外发与限流**：只向账户配置的 API 主机发送 Bearer 令牌，只跟随同主机 HTTPS 重定向；同步流量算账户配置，不走外发审批。遇到 HTTP 429 或 403 `rateLimitExceeded` 时和 EWS 一样按单账户串行并退避重试。
+- **实现与测试**：直接基于标准库 `net/http` 和本地 MIME 解析实现，不引入 Google API SDK；内存假服务器 `backend/gmailapi/gmailapitest` 覆盖契约测试与 `coretest` 端到端测试。
 
 ## Considered Options
 

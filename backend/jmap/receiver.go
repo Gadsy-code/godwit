@@ -23,6 +23,7 @@ import (
 	"github.com/emersion/go-imap/v2/imapserver"
 
 	"github.com/godwit-email/godwit/backend"
+	"github.com/godwit-email/godwit/backend/conn"
 )
 
 // Receiver is a JMAP account's receiving backend. Its folders are mailboxes
@@ -41,10 +42,18 @@ func (r *Receiver) Close() error {
 	return nil
 }
 
+// ReasonNoSubmission is the add-account check's refusal of a JMAP server (or
+// API token) whose session does not advertise urn:ietf:params:jmap:submission.
+const ReasonNoSubmission = "jmap.no_submission"
+
+// ErrNoSubmission is Check or Send on a session without JMAP email submission.
+// Its message is ReasonNoSubmission. Check returns it with a full CheckResult:
+// the account can still receive.
+var ErrNoSubmission = errors.New(ReasonNoSubmission)
+
 const (
 	reasonNoCopy  = "jmap.no_copy"         // JMAP has no copy within an account, only one more mailbox
 	reasonFolders = "jmap.folders_pending" // Mailbox/set is not implemented yet
-	reasonSMTP    = "jmap.sent_via_smtp"   // mail goes out by SMTP, which saves no copy
 	reasonAllMail = "jmap.no_all_mail"     // an Email is always in some mailbox; archiving moves it to the archive one
 )
 
@@ -60,7 +69,6 @@ var description = func() backend.Description {
 	}
 	no(reasonNoCopy, backend.FeatureCopy)
 	no(reasonFolders, backend.FeatureFolderCreate, backend.FeatureFolderRename, backend.FeatureFolderDelete, backend.FeatureLabelDelete)
-	no(reasonSMTP, backend.FeatureSavesSent)
 	no(reasonAllMail, backend.FeatureAllMail)
 	return d
 }()
@@ -68,16 +76,24 @@ var description = func() backend.Description {
 // Describe implements backend.Receiver. Its first call signs in, fetching
 // the session, so refused credentials are ErrAuthFailed here.
 func (r *Receiver) Describe(ctx context.Context) (backend.Description, error) {
-	if _, _, err := r.c.sess(ctx); err != nil {
+	s, acct, err := r.c.sess(ctx)
+	if err != nil {
 		return backend.Description{}, err
 	}
 	d := description
 	d.Features = maps.Clone(d.Features)
+	if !hasSubmission(s, acct) {
+		d.Features[backend.FeatureSavesSent] = backend.Support{Level: backend.LevelUnsupported, Reason: ReasonNoSubmission}
+	}
 	return d, nil
 }
 
 // Check implements backend.Receiver.
 func (r *Receiver) Check(ctx context.Context) (backend.CheckResult, error) {
+	s, acct, err := r.c.sess(ctx)
+	if err != nil {
+		return backend.CheckResult{}, err
+	}
 	boxes, _, err := r.mailboxes(ctx)
 	if err != nil {
 		return backend.CheckResult{}, err
@@ -86,7 +102,11 @@ func (r *Receiver) Check(ctx context.Context) (backend.CheckResult, error) {
 	host := r.c.host
 	r.c.mu.Unlock()
 	d, _ := r.Describe(ctx)
-	return backend.CheckResult{Host: host, Folders: len(boxes), Description: d}, nil
+	res := backend.CheckResult{Host: host, Folders: len(boxes), Description: d}
+	if !hasSubmission(s, acct) { // receiving works: the result stands, only sending is refused
+		return res, ErrNoSubmission
+	}
+	return res, nil
 }
 
 func (r *Receiver) mailboxes(ctx context.Context) ([]*mailbox.Mailbox, string, error) {
@@ -466,7 +486,8 @@ func (r *Receiver) changes(ctx context.Context, req backend.SyncRequest, cur cur
 		s.add(backend.FolderGone{Ref: backend.FolderRef(id)})
 	}
 
-	kind := map[gojmap.ID]bool{} // true: exists, false: destroyed
+	kind := map[gojmap.ID]bool{}    // true: exists, false: destroyed
+	created := map[gojmap.ID]bool{} // listed as created: the only new arrivals
 	estate := cur.Email
 	for more := true; more; {
 		out, err := r.c.call(ctx, func(acct gojmap.ID) []gojmap.Method {
@@ -476,7 +497,10 @@ func (r *Receiver) changes(ctx context.Context, req backend.SyncRequest, cur cur
 			return err
 		}
 		c := out[0].(*email.ChangesResponse)
-		for _, id := range append(c.Created, c.Updated...) {
+		for _, id := range c.Created {
+			kind[id], created[id] = true, true
+		}
+		for _, id := range c.Updated {
 			kind[id] = true
 		}
 		for _, id := range c.Destroyed {
@@ -519,7 +543,20 @@ func (r *Receiver) changes(ctx context.Context, req backend.SyncRequest, cur cur
 				}
 			}
 		}
-		if err := s.appear(ctx, mails, held, false); err != nil {
+		// Mail that only changed and is not held was never in the window, or is
+		// at a new location: a backfill, so nothing announces it as new.
+		var arrived, changed []*email.Email
+		for _, e := range mails {
+			if created[e.ID] {
+				arrived = append(arrived, e)
+			} else {
+				changed = append(changed, e)
+			}
+		}
+		if err := s.appear(ctx, arrived, held, false); err != nil {
+			return err
+		}
+		if err := s.appear(ctx, changed, held, true); err != nil {
 			return err
 		}
 		if err := s.flush(backend.Page{}); err != nil {
@@ -821,9 +858,7 @@ func (r *Receiver) trash(ctx context.Context) (backend.FolderRef, error) {
 // Watch implements backend.Receiver over the session's EventSource. It wakes
 // for every state the server sends, the one on connect included, which
 // covers what changed while it was not connected. When the server closes the
-// stream it connects again.
-// shortcut: no read deadline, so a connection that dies silently is not
-// noticed; ask for pings and time out on their absence if that bites.
+// stream, or sends nothing, not even a ping, for watchStall, it connects again.
 func (r *Receiver) Watch(ctx context.Context, wake func(folders []backend.FolderRef)) error {
 	for {
 		s, _, err := r.c.sess(ctx)
@@ -833,31 +868,43 @@ func (r *Receiver) Watch(ctx context.Context, wake func(folders []backend.Folder
 		if s.EventSourceURL == "" {
 			return backend.ErrUnsupported
 		}
-		u := strings.NewReplacer("{types}", "*", "{closeafter}", "no", "{ping}", "0").Replace(s.EventSourceURL)
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		u := strings.NewReplacer("{types}", "*", "{closeafter}", "no", "{ping}", watchPing).Replace(s.EventSourceURL)
+		rctx, cancel := context.WithCancel(ctx)
+		req, err := http.NewRequestWithContext(rctx, http.MethodGet, u, nil)
 		if err != nil {
+			cancel()
 			return err
 		}
 		req.Header.Set("Accept", "text/event-stream")
-		resp, err := r.c.do(req)
+		resp, err := r.c.do(r.c.stream, req)
 		if err != nil {
+			cancel()
 			return err
 		}
-		err = events(resp.Body, func() { wake(nil) })
-		resp.Body.Close()
+		body := conn.StallBody(resp.Body, watchStall, cancel)
+		err = events(body, func() { wake(nil) })
+		body.Close()
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err != nil {
+		if err != nil && !errors.Is(err, conn.ErrStalled) {
 			return err
 		}
-		select { // the server closed the stream: connect again
+		select { // the stream ended or went silent: connect again
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
 }
+
+// watchPing is the ping interval Watch asks for, in seconds (RFC 8620 7.3);
+// watchStall is how long a silent stream lasts, with room for a server that
+// raises the interval.
+var (
+	watchPing  = "60"
+	watchStall = 5 * time.Minute
+)
 
 // events reads an event stream, calling state for each state event, until
 // it ends (nil) or fails.
