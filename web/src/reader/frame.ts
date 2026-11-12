@@ -387,6 +387,19 @@ export function foldQuotes(html: string): string {
       (c) => c.hasAttribute("class") || c.hasAttribute("id"),
     );
   const inlineLead = (n: ChildNode) => isInlineAttrPart(n) && !sheetStyled(n);
+  // Wrapping the quote in <details> changes its parent and siblings: a rule that relies on them
+  // (a > child, + or ~ sibling, structural pseudo-class, :has) would stop matching, so leave it.
+  const selectors = [...doc.querySelectorAll("style")]
+    .flatMap((s) => [...(s.textContent ?? "").matchAll(/([^{}]+)\{/g)].map((m) => m[1]))
+    .filter((sel) => !sel.trim().startsWith("@"));
+  if (
+    selectors.some((sel) =>
+      /[>+~]|(?<!:):(?:nth-|first-child|last-child|first-of-type|last-of-type|only-|has\()/i.test(
+        sel,
+      ),
+    )
+  )
+    return html;
 
   let first: ChildNode = last;
   if (last.tagName === "BLOCKQUOTE") {

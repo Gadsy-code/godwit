@@ -1364,6 +1364,18 @@ test("quote fold controls stay readable on naturally dark HTML surfaces in light
   expect(Math.max(...channels(win.getComputedStyle(summary).color).slice(0, 3))).toBeLessThan(50);
 });
 
+test("quote fold controls stay visible when they inherit a transparent text colour", async () => {
+  const { doc } = await start(
+    body(
+      1,
+      '<div style="color:transparent"><p style="color:#111">Reply</p><blockquote style="color:#333">Quote</blockquote></div>',
+      { theme, collapseQuotes: true },
+    ),
+  );
+  const summary = doc.querySelector("details.godwit-quote-fold > summary") as HTMLElement;
+  expect(summary.style.color).toBe("rgb(10, 10, 10)");
+});
+
 test("quote fold controls keep light colors on dark plain-text and author-dark HTML replies", async () => {
   const { doc: plainDoc, win: plainWin } = await start(
     body(1, "", {

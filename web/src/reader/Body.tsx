@@ -306,8 +306,10 @@ function attach(
       let tone = "";
       if (fg) {
         const bgL = brightness(bg);
-        const fgL = brightness(fg);
+        const fgL = brightness(over(fg, bg)); // a translucent colour shows as much of the surface
         tone = bgL < 110 && fgL < 140 ? "#fafafa" : bgL > 145 && fgL > 160 ? "#0a0a0a" : "";
+        // Whatever the surface, a colour too close to it (a transparent one) gets a readable one.
+        if (!tone && Math.abs(bgL - fgL) < 60) tone = bgL < 128 ? "#fafafa" : "#0a0a0a";
       }
       for (const el of [summary, rail]) {
         if (el && tones.get(el) !== tone) {

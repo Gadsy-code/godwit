@@ -402,6 +402,24 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
   expect(sheetBlocks?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
   expect(sheetBlocks?.textContent).toContain("Do not pay yet.");
 
+  // Rules that depend on the quote's parent or siblings would stop matching inside <details>.
+  for (const sheet of [
+    ".reply > blockquote{white-space:pre-wrap}",
+    "p + blockquote{color:#333}",
+    "blockquote:last-child{color:#333}",
+  ]) {
+    const structural = folded({
+      html: `<style>${sheet}</style><div class="reply"><p>Hi</p><blockquote>a\n  b</blockquote></div>`,
+    });
+    expect(structural?.querySelector("details")).toBeNull();
+  }
+  // A pseudo-element such as ::first-line does not depend on the quote's place.
+  expect(
+    folded({
+      html: "<style>p::first-line{color:red}</style><p>Hi</p><blockquote>Old</blockquote>",
+    })?.querySelector("details"),
+  ).not.toBeNull();
+
   // Bare-text/inline attribution inside a reply container folds with the quote while keeping reply text out.
   const inlineAttr = folded({
     html: '<div>Thanks!<br><br>On Tue, <span data-href="mailto:b@x">Bob</span> wrote:<br><blockquote>Original</blockquote></div>',
