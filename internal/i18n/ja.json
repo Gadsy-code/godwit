@@ -2,6 +2,8 @@
   "@@locale": "ja",
   "settings_collapse_quotes": "引用文を折りたたむ",
   "settings_collapse_quotes_help": "返信が引用している部分をボタンの後ろに隠し、送信者が書いた部分だけを表示します",
+  "reader_quote_expand": "引用文を展開",
+  "reader_quote_collapse": "引用文を折りたたむ",
   "wit_tool_create_skill": "Skill を作成",
   "wit_skill_name": "識別子",
   "wit_skill_display_name": "表示名",

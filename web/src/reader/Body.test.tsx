@@ -1257,3 +1257,55 @@ test("a height media query that changes its result recomputes at the same width"
   flush();
   expect(renderedContrast(text, win)).toBeGreaterThanOrEqual(4.5);
 });
+
+test("quote fold controls keep CSS states in auto-dark mode, show tooltips and collapse via rail", async () => {
+  const html =
+    '<div style="background:#fff;color:#111"><p>Sounds good.</p>' +
+    "<p>On Tue, Bob wrote:</p>" +
+    '<blockquote id="quoted" style="color:#222"><p>Shall we meet at 3?</p></blockquote></div>';
+  const { doc, win } = await start(
+    body(1, html, { theme: darkTheme, collapseQuotes: true, locale: "en" }),
+  );
+  const fold = doc.querySelector("details.godwit-quote-fold") as HTMLDetailsElement;
+  const summary = fold.querySelector("summary") as HTMLElement;
+  const pill = fold.querySelector(".godwit-quote-pill") as HTMLElement;
+  const rail = fold.querySelector(".godwit-quote-rail") as HTMLElement;
+  const quoted = doc.getElementById("quoted") as HTMLElement;
+
+  // Auto-dark adapts the quoted mail inside <details>, without inline-locking the UI controls.
+  expect(summary.getAttribute("style")).toBeNull();
+  expect(pill.getAttribute("style")).toBeNull();
+  expect(rail.getAttribute("style")).toBeNull();
+  expect(win.getComputedStyle(quoted).color).not.toBe("rgb(34, 34, 34)");
+
+  // Collapsed state: accessible label + hover tooltip clamped inside a tight native WebView.
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: 48 });
+  pill.getBoundingClientRect = () => ({ right: 30, top: 30, height: 18 }) as DOMRect;
+  expect(summary.getAttribute("aria-label")).toBe("Show quoted text");
+  act(() => {
+    pill.dispatchEvent(new win.Event("pointerover", { bubbles: true }));
+  });
+  const collapsedTip = screen.getByRole("tooltip");
+  expect(collapsedTip).toHaveTextContent("Show quoted text");
+  expect(Number.parseFloat(collapsedTip.style.top)).toBeLessThanOrEqual(35); // 48 - 13 clearance
+
+  // Open the fold: tooltip clears, label flips to "Fold quoted text", rail hover shows collapse tip.
+  act(() => {
+    fold.open = true;
+    fold.dispatchEvent(new win.Event("toggle"));
+  });
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  expect(summary.getAttribute("aria-label")).toBe("Fold quoted text");
+
+  act(() => {
+    rail.dispatchEvent(new win.MouseEvent("pointerover", { bubbles: true, clientY: 40 }));
+  });
+  expect(screen.getByRole("tooltip")).toHaveTextContent("Fold quoted text");
+
+  // Clicking the left rail folds the quote back and hides the tooltip.
+  act(() => {
+    rail.dispatchEvent(new win.MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+  expect(fold.open).toBe(false);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});

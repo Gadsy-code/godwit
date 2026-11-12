@@ -2,6 +2,8 @@
   "@@locale": "nl",
   "settings_collapse_quotes": "Geciteerde tekst inklappen",
   "settings_collapse_quotes_help": "Verberg wat een antwoord citeert achter een knop, zodat alleen te zien is wat de afzender schreef",
+  "reader_quote_expand": "Geciteerde tekst uitklappen",
+  "reader_quote_collapse": "Geciteerde tekst inklappen",
   "wit_tool_create_skill": "Skill maken",
   "wit_skill_name": "Identificatie",
   "wit_skill_display_name": "Weergavenaam",

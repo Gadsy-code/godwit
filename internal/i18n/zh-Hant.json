@@ -2,6 +2,8 @@
   "@@locale": "zh-Hant",
   "settings_collapse_quotes": "摺疊引用的文字",
   "settings_collapse_quotes_help": "把回覆引用的內容收在一個按鈕後面，只顯示寄件者自己寫的部分",
+  "reader_quote_expand": "展開引用的文字",
+  "reader_quote_collapse": "摺疊引用的文字",
   "wit_tool_create_skill": "建立 Skill",
   "wit_skill_name": "識別碼",
   "wit_skill_display_name": "顯示名稱",

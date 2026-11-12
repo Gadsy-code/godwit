@@ -2,6 +2,8 @@
   "@@locale": "it",
   "settings_collapse_quotes": "Comprimi il testo citato",
   "settings_collapse_quotes_help": "Nascondi ciò che una risposta cita dietro un pulsante, così si vede solo ciò che ha scritto il mittente",
+  "reader_quote_expand": "Espandi il testo citato",
+  "reader_quote_collapse": "Comprimi il testo citato",
   "wit_tool_create_skill": "Crea uno Skill",
   "wit_skill_name": "Identificatore",
   "wit_skill_display_name": "Nome visualizzato",

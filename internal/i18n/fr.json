@@ -2,6 +2,8 @@
   "@@locale": "fr",
   "settings_collapse_quotes": "Replier le texte cité",
   "settings_collapse_quotes_help": "Masquer ce qu’une réponse cite derrière un bouton, pour ne voir que ce que l’expéditeur a écrit",
+  "reader_quote_expand": "Afficher le texte cité",
+  "reader_quote_collapse": "Replier le texte cité",
   "wit_tool_create_skill": "Créer un Skill",
   "wit_skill_name": "Identifiant",
   "wit_skill_display_name": "Nom affiché",

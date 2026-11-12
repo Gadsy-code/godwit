@@ -2,6 +2,8 @@
   "@@locale": "pt",
   "settings_collapse_quotes": "Recolher o texto citado",
   "settings_collapse_quotes_help": "Ocultar o que uma resposta cita atrás de um botão, para mostrar só o que o remetente escreveu",
+  "reader_quote_expand": "Expandir o texto citado",
+  "reader_quote_collapse": "Recolher o texto citado",
   "wit_tool_create_skill": "Criar um Skill",
   "wit_skill_name": "Identificador",
   "wit_skill_display_name": "Nome de exibição",

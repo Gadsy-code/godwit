@@ -248,7 +248,7 @@ const folded = (over: Partial<ReaderBody>) =>
     "godwit-body",
   );
 
-test("a reply's quoted text folds behind a button", () => {
+test("a reply's quoted text folds behind a pill and hairline rule", () => {
   const w = folded({
     html:
       "<p>Thanks, 8 works.</p>" +
@@ -258,15 +258,61 @@ test("a reply's quoted text folds behind a button", () => {
   const fold = w?.querySelector("details.godwit-quote-fold");
   expect(fold).not.toBeNull();
   expect(fold?.hasAttribute("open")).toBe(false);
-  expect(fold?.querySelector("summary")?.textContent).toBe("⋯");
+  expect(fold?.querySelector("summary")?.textContent).toBe(""); // icons only: nothing extra copied with the mail
+  expect(fold?.querySelector(".godwit-quote-pill svg.godwit-quote-dots")).not.toBeNull();
+  expect(fold?.querySelector(".godwit-quote-line")).not.toBeNull();
+  expect(fold?.querySelector(".godwit-quote-rail")).not.toBeNull();
   expect(fold?.textContent).toContain("Dinner?");
   expect(w?.firstElementChild?.textContent).toBe("Thanks, 8 works."); // the sender's own text stays out
 });
 
-test("a bare blockquote folds once, nested ones with it", () => {
+test("a preceding single-line attribution folds with a bare blockquote, ordinary prose stays out", () => {
+  const withAttr = folded({
+    html: "<p>Thanks!</p><div><br></div><p>于 2026年11月12日 09:15，周明 写道：</p><blockquote><p>Dinner?</p></blockquote>",
+  });
+  const fold = withAttr?.querySelector("details.godwit-quote-fold");
+  expect(fold?.textContent).toContain("写道：");
+  expect(fold?.textContent).toContain("Dinner?");
+  expect(withAttr?.firstElementChild?.textContent).toBe("Thanks!");
+  expect(withAttr?.children).toHaveLength(2); // blank spacer above the fold was trimmed
+
+  const prose = folded({
+    html: "<p>Hi,</p><p>My notes:</p><blockquote><p>Spec</p></blockquote>",
+  });
+  expect(prose?.querySelector("details")?.textContent).not.toContain("My notes:");
+  expect(prose?.textContent).toContain("My notes:");
+
+  // Nothing but an attribution and a quote stays open.
+  expect(
+    folded({ html: "<p>On Tue, Bob wrote:</p><blockquote>Forwarded</blockquote>" })?.querySelector(
+      "details",
+    ),
+  ).toBeNull();
+});
+
+test("a bare blockquote folds once, collapsing wrapper shells while keeping nested quote bars", () => {
   const w = folded({ html: "<p>OK</p><blockquote>one<blockquote>two</blockquote></blockquote>" });
   expect(w?.querySelectorAll("details.godwit-quote-fold")).toHaveLength(1);
-  expect(w?.querySelector("details blockquote blockquote")?.textContent).toBe("two");
+  expect(w?.querySelector("details blockquote")?.hasAttribute("data-quote-root")).toBe(true);
+  const nested = w?.querySelector("details blockquote blockquote");
+  expect(nested?.textContent).toBe("two");
+  expect(nested?.hasAttribute("data-quote-root")).toBe(false);
+
+  // Wrapper blockquote holding only an attribution + first quote (e.g. Compose's own reply markup)
+  // collapses both into the single outer rail, while an older nested quote keeps its bar.
+  const wrapped = folded({
+    html:
+      "<p>Reply</p>" +
+      '<blockquote data-godwit="quote" style="margin:0;padding:0;border:0">' +
+      "<p>于 2026-08-12 18:31, A 写道:</p>" +
+      '<blockquote id="first"><p>Hello</p><blockquote id="older"><p>Prior</p></blockquote></blockquote>' +
+      "</blockquote>",
+  });
+  expect(wrapped?.querySelector('[data-godwit="quote"]')?.hasAttribute("data-quote-root")).toBe(
+    true,
+  );
+  expect(wrapped?.querySelector("#first")?.hasAttribute("data-quote-root")).toBe(true);
+  expect(wrapped?.querySelector("#older")?.hasAttribute("data-quote-root")).toBe(false);
 });
 
 test("only a quote at the end folds: an inline reply stays open", () => {
@@ -297,15 +343,21 @@ test("a leading style stays when a quote folds", () => {
   expect(w?.querySelector("details")).not.toBeNull();
 });
 
-test("plain text: the trailing '>' lines fold, the attribution stays", () => {
-  const w = folded({ html: "", plain: "Thanks!\n\nOn Tue, Bob wrote:\n> Dinner?\n> At 8?\n" });
+test("plain text: the trailing '>' lines and preceding attribution fold together", () => {
+  const w = folded({
+    html: "",
+    plain: "Thanks!\n\nOn Tue, Bob wrote:\n> Dinner?\n> At 8?\n",
+  });
   const fold = w?.querySelector("details.godwit-quote-fold");
+  expect(fold?.textContent).toContain("On Tue, Bob wrote:");
   expect(fold?.textContent).toContain("> Dinner?");
   expect(fold?.textContent).toContain("> At 8?");
-  expect(w?.textContent).toContain("On Tue, Bob wrote:");
-  expect(fold?.textContent).not.toContain("On Tue");
+  expect(w?.firstChild?.textContent).toBe("Thanks!");
 });
 
-test("plain text: nothing but quoted lines stays open", () => {
+test("plain text: nothing but quoted lines (or attribution + quotes) stays open", () => {
   expect(folded({ html: "", plain: "> a\n> b" })?.querySelector("details")).toBeNull();
+  expect(
+    folded({ html: "", plain: "On Tue, Bob wrote:\n> a" })?.querySelector("details"),
+  ).toBeNull();
 });

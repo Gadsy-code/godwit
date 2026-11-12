@@ -30,6 +30,35 @@ function linkLength(u: string): number {
   return end;
 }
 
+// A single-line reply lead ("On … wrote:", "于 … 写道：") placed right above a quote by mail clients.
+const ATTR_RE =
+  /\bwrote\s*:|写道\s*[:：]|寫道\s*[:：]|書きました\s*[:：]|작성\s*:|\bschrieb\b.*:|\ba écrit\s*:|\bescribió\s*:|\bescreveu\s*:|\bha scritto\s*:|\b(?:пишет|написал[аи]?)\s*:|\bschreef\b.*:|\byazdı\s*:|\bđã viết\s*:/i;
+
+function isAttribution(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.includes("\n")) return false;
+  const s = trimmed.replace(/\s+/g, " ");
+  return s.length <= 240 && /[:：]$/.test(s) && ATTR_RE.test(s);
+}
+
+// A quote folded behind a pill and hairline rule: <details> needs no script in the CSP-locked frame;
+// the parent wires the left collapse rail and the hover tooltip.
+const DOTS_SVG =
+  '<svg class="godwit-quote-dots" width="16" height="10" viewBox="0 0 16 10" fill="currentColor" aria-hidden="true">' +
+  '<circle cx="3" cy="5" r="1.45"/><circle cx="8" cy="5" r="1.45"/><circle cx="13" cy="5" r="1.45"/></svg>';
+const UP_SVG =
+  '<svg class="godwit-quote-up" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M3 7.5L6 4.5L9 7.5"/></svg>';
+const FOLD_SUMMARY =
+  `<summary data-godwit-ui><span class="godwit-quote-pill">${DOTS_SVG}${UP_SVG}</span>` +
+  '<span class="godwit-quote-line" aria-hidden="true"></span></summary>';
+const FOLD_RAIL =
+  '<span class="godwit-quote-rail" data-godwit-ui aria-hidden="true">' +
+  '<span class="godwit-quote-rail-line"></span></span>';
+const FOLD_OPEN = `<details class="godwit-quote-fold">${FOLD_SUMMARY}<div class="godwit-quote-body">${FOLD_RAIL}`;
+const FOLD_CLOSE = "</div></details>";
+
 /**
  * Plain text as HTML: escaped, its web addresses links (data-href, as Go makes an HTML mail's)
  * and its quoted lines ("> …") marked, which the style mutes.
@@ -37,36 +66,45 @@ function linkLength(u: string): number {
 export function plainHTML(text: string, fold = false): string {
   const lines = text.split("\n");
   const quoted = (line: string) => /^\s*>/.test(line);
-  // With fold: the quoted lines at the end (blank lines among them) fold behind a button, when the
-  // message has words of its own above them; what introduces the quote ("On … wrote:") is one.
+  // With fold: the quoted lines at the end (and a preceding "On … wrote:" lead) fold behind a
+  // button, when the message has words of its own above them.
   let from = lines.length;
   if (fold) {
     while (from > 0 && (quoted(lines[from - 1]) || lines[from - 1].trim() === "")) from--;
     while (from < lines.length && !quoted(lines[from])) from++;
+    if (from < lines.length) {
+      let lead = from - 1;
+      while (lead >= 0 && lines[lead].trim() === "") lead--;
+      if (lead >= 0 && isAttribution(lines[lead])) from = lead;
+    }
     if (from === lines.length || !lines.slice(0, from).some((l) => l.trim() !== ""))
       from = lines.length;
   }
-  const html = lines
-    .map((line) => {
-      let html = "";
-      let at = 0;
-      for (const m of line.matchAll(URL_RE)) {
-        const link = m[0].slice(0, linkLength(m[0]));
-        if (!/^https?:\/\/./.test(link)) continue; // nothing but the scheme
-        const url = escapeText(link);
-        html += `${escapeText(line.slice(at, m.index))}<span data-href="${url}">${url}</span>`;
-        at = m.index + link.length;
-      }
-      html += escapeText(line.slice(at));
-      return quoted(line) ? `<span class="godwit-quote">${html}</span>` : html;
-    })
-    .map((h, i) => (i === from ? FOLD_OPEN + h : h));
-  return html.join("\n") + (from < lines.length ? FOLD_CLOSE : "");
+  const renderLine = (line: string) => {
+    let html = "";
+    let at = 0;
+    for (const m of line.matchAll(URL_RE)) {
+      const link = m[0].slice(0, linkLength(m[0]));
+      if (!/^https?:\/\/./.test(link)) continue; // nothing but the scheme
+      const url = escapeText(link);
+      html += `${escapeText(line.slice(at, m.index))}<span data-href="${url}">${url}</span>`;
+      at = m.index + link.length;
+    }
+    html += escapeText(line.slice(at));
+    return quoted(line) ? `<span class="godwit-quote">${html}</span>` : html;
+  };
+  if (from === lines.length) return lines.map(renderLine).join("\n");
+  let bodyEnd = from;
+  while (bodyEnd > 0 && lines[bodyEnd - 1].trim() === "") bodyEnd--;
+  let quoteEnd = lines.length;
+  while (quoteEnd > from && lines[quoteEnd - 1].trim() === "") quoteEnd--;
+  return (
+    lines.slice(0, bodyEnd).map(renderLine).join("\n") +
+    FOLD_OPEN +
+    lines.slice(from, quoteEnd).map(renderLine).join("\n") +
+    FOLD_CLOSE
+  );
 }
-
-// A quote folded behind a button: <details> needs no script, which the frame may not run.
-const FOLD_OPEN = '<details class="godwit-quote-fold"><summary>⋯</summary>';
-const FOLD_CLOSE = "</details>";
 
 // The words of a node, left out of the count when they are a stylesheet's or a script's.
 const visibleWords = (doc: Document, root: Node, keep: (n: Node) => boolean): string => {
@@ -79,12 +117,24 @@ const visibleWords = (doc: Document, root: Node, keep: (n: Node) => boolean): st
   return out.trim();
 };
 
-const QUOTE = "blockquote, div.gmail_quote";
+const QUOTE = "blockquote, div.gmail_quote, div.yahoo_quoted, div.protonmail_quote";
+
+function isBlankSpacer(n: ChildNode): boolean {
+  if (n.nodeType === Node.TEXT_NODE) return (n.textContent ?? "").trim() === "";
+  if (n.nodeType !== Node.ELEMENT_NODE) return false;
+  const el = n as Element;
+  if (el.tagName === "BR") return true;
+  return (
+    (el.tagName === "DIV" || el.tagName === "P") &&
+    (el.textContent ?? "").trim() === "" &&
+    !el.querySelector("img, hr, table, svg, video, iframe")
+  );
+}
 
 /**
- * An HTML body with the quote at its end folded behind a button: the last outermost blockquote (or
- * Gmail's div.gmail_quote), when the message has words of its own before it and none after. An
- * inline reply (a quote with an answer after it) and a message that is only a quote stay open.
+ * An HTML body with the quote at its end folded behind a button: the last outermost quote block
+ * (plus a single-line "On … wrote:" lead right before a bare blockquote), when the message has
+ * words of its own before it and none after. An inline reply and a quote-only mail stay open.
  */
 export function foldQuotes(html: string): string {
   const doc = new DOMParser().parseFromString(`<!doctype html><body>${html}`, "text/html");
@@ -92,25 +142,86 @@ export function foldQuotes(html: string): string {
     .filter((q) => !q.parentElement?.closest(QUOTE))
     .at(-1);
   if (!last) return html;
-  const before = visibleWords(
-    doc,
-    doc.body,
-    (n) =>
-      !last.contains(n) && !!(last.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING),
-  );
   const after = visibleWords(
     doc,
     doc.body,
     (n) =>
       !last.contains(n) && !!(last.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING),
   );
-  if (before === "" || after !== "") return html;
-  const fold = doc.createElement("details");
-  fold.className = "godwit-quote-fold";
-  const summary = doc.createElement("summary");
-  summary.textContent = "⋯";
-  last.replaceWith(fold);
-  fold.append(summary, last);
+  if (after !== "") return html;
+
+  let first: ChildNode = last;
+  if (last.tagName === "BLOCKQUOTE") {
+    let cur = last.previousSibling;
+    while (cur && isBlankSpacer(cur)) cur = cur.previousSibling;
+    if (
+      cur?.nodeType === Node.ELEMENT_NODE &&
+      ["P", "DIV", "SPAN"].includes((cur as Element).tagName) &&
+      !(cur as Element).querySelector("blockquote, img, table, ul, ol, pre, hr") &&
+      isAttribution(cur.textContent ?? "")
+    ) {
+      first = cur;
+    }
+  }
+
+  const before = visibleWords(
+    doc,
+    doc.body,
+    (n) =>
+      !first.contains(n) &&
+      n !== first &&
+      !!(first.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING),
+  );
+  if (before === "") return html;
+
+  while (first.previousSibling && isBlankSpacer(first.previousSibling)) {
+    first.previousSibling.remove();
+  }
+
+  // Mark the outer quote wrapper (and any single-child inner quote that only follows an
+  // attribution, as in Godwit's or Gmail's wrapper+blockquote pairs) so only the left rail shows.
+  let rootQuote: Element = last;
+  while (true) {
+    rootQuote.setAttribute("data-quote-root", "");
+    const directQuotes = [...rootQuote.querySelectorAll(QUOTE)].filter((q) => {
+      let p = q.parentElement;
+      while (p && p !== rootQuote) {
+        if (p.matches(QUOTE)) return false;
+        p = p.parentElement;
+      }
+      return p === rootQuote;
+    });
+    if (directQuotes.length !== 1) break;
+    const inner = directQuotes[0];
+    const leadText = visibleWords(
+      doc,
+      rootQuote,
+      (n) =>
+        !inner.contains(n) &&
+        !!(inner.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING),
+    );
+    const tailText = visibleWords(
+      doc,
+      rootQuote,
+      (n) =>
+        !inner.contains(n) &&
+        !!(inner.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING),
+    );
+    if (tailText !== "" || (leadText !== "" && !isAttribution(leadText))) break;
+    rootQuote = inner;
+  }
+
+  const tpl = doc.createElement("div");
+  tpl.innerHTML = `${FOLD_OPEN}${FOLD_CLOSE}`;
+  const fold = tpl.firstElementChild as HTMLElement;
+  const quoteBody = fold.querySelector(".godwit-quote-body") as HTMLElement;
+  first.before(fold);
+  let node: ChildNode | null = first;
+  while (node) {
+    const next: ChildNode | null = node === last ? null : node.nextSibling;
+    quoteBody.append(node);
+    node = next;
+  }
   return doc.body.innerHTML;
 }
 
@@ -185,10 +296,11 @@ const plainCSS = (t: Theme, scheme: string) => {
  */
 export function buildSrcdoc(b: ReaderBody, t: Theme, systemDark = false): string {
   const html = b.html !== "";
+  const scheme = frameScheme(b, t, systemDark);
   const css =
     frameCSS +
     base(size(t.bodyFontSize), html ? "normal" : "1.5") +
-    (html ? htmlCSS(t, frameScheme(b, t, systemDark)) : plainCSS(t, frameScheme(b, t)));
+    (html ? htmlCSS(t, scheme) : plainCSS(t, scheme));
   const dark = isDark(t, systemDark);
   const auto = html && dark && !hasDarkStyles(b);
   const cls =
@@ -204,6 +316,6 @@ export function buildSrcdoc(b: ReaderBody, t: Theme, systemDark = false): string
     `<meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}">` +
     '<meta charset="utf-8">' +
     `<style>${css}</style></head>` +
-    `<body><div id="godwit-body" class="${cls}"${auto ? " data-auto-dark" : ""}>${html ? (b.collapseQuotes ? foldQuotes(b.html) : b.html) : plainHTML(b.plain, b.collapseQuotes)}</div></body></html>`
+    `<body data-scheme="${scheme}"><div id="godwit-body" class="${cls}"${auto ? " data-auto-dark" : ""}>${html ? (b.collapseQuotes ? foldQuotes(b.html) : b.html) : plainHTML(b.plain, b.collapseQuotes)}</div></body></html>`
   );
 }

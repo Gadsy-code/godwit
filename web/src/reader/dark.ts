@@ -256,7 +256,8 @@ export function adaptDarkMode(frame: HTMLIFrameElement, theme: Theme): () => voi
       let retryNeeded = false;
       // Read the entire light baseline before any overrides can affect inheritance.
       for (const el of [root, ...root.querySelectorAll<HTMLElement>("*")]) {
-        if (["STYLE", "META", "LINK", "BR"].includes(el.tagName)) continue;
+        if (["STYLE", "META", "LINK", "BR"].includes(el.tagName) || el.closest("[data-godwit-ui]"))
+          continue;
         const parent = snapshots.get(el.parentElement as HTMLElement);
         const computed = win.getComputedStyle(el);
         const bg = parse(computed.backgroundColor || "transparent");

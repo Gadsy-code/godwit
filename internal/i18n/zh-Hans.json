@@ -2,6 +2,8 @@
   "@@locale": "zh-Hans",
   "settings_collapse_quotes": "折叠引用的文字",
   "settings_collapse_quotes_help": "把回复引用的内容收在一个按钮后面，只显示发件人自己写的部分",
+  "reader_quote_expand": "展开引用的文字",
+  "reader_quote_collapse": "折叠引用的文字",
   "wit_tool_create_skill": "创建 Skill",
   "wit_skill_name": "标识符",
   "wit_skill_display_name": "显示名称",
