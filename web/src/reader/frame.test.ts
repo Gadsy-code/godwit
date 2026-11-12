@@ -306,12 +306,30 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
   });
   expect(trailingBr?.querySelector("details")?.textContent).toContain("On Tue, Bob wrote:");
 
-  // Nothing but an attribution and a quote stays open.
+  // Nothing but an attribution (block, bare text node, or nested wrapper) and a quote stays open.
   expect(
     folded({ html: "<p>On Tue, Bob wrote:</p><blockquote>Forwarded</blockquote>" })?.querySelector(
       "details",
     ),
   ).toBeNull();
+  expect(
+    folded({
+      html: "<div>On Tue, Bob wrote:<br><blockquote>Original</blockquote></div>",
+    })?.querySelector("details"),
+  ).toBeNull();
+  expect(
+    folded({
+      html: "<div><div><p>On Tue, Bob wrote:</p></div><blockquote>Original</blockquote></div>",
+    })?.querySelector("details"),
+  ).toBeNull();
+
+  // Bare-text/inline attribution inside a reply container folds with the quote while keeping reply text out.
+  const inlineAttr = folded({
+    html: '<div>Thanks!<br><br>On Tue, <span data-href="mailto:b@x">Bob</span> wrote:<br><blockquote>Original</blockquote></div>',
+  });
+  expect(inlineAttr?.querySelector("details")?.textContent).toContain("On Tue, Bob wrote:");
+  expect(inlineAttr?.querySelector("details")?.textContent).not.toContain("Thanks!");
+  expect(inlineAttr?.textContent).toContain("Thanks!");
 });
 
 test("a bare blockquote folds once, collapsing wrapper shells while keeping nested quote bars", () => {

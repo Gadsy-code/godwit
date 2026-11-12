@@ -151,14 +151,16 @@ const BLOCK_TAGS = new Set([
   "UL",
 ]);
 
-// Visible text of root with <br> and block boundaries preserved as "\n", so multi-line blocks are
-// never concatenated into a single synthetic attribution line.
+// Visible text of root with <br> and block boundaries preserved as "\n" (while folding raw source
+// line wraps inside text nodes to spaces, as HTML layout does), so multi-line blocks are never
+// concatenated into a single synthetic attribution line.
 function renderedText(root: Node, keep: (n: Node) => boolean = () => true): string {
   let out = "";
-  const walk = (n: Node) => {
+  const walk = (n: Node, pre: boolean) => {
     if (!keep(n)) return;
     if (n.nodeType === Node.TEXT_NODE) {
-      out += n.textContent ?? "";
+      const raw = n.textContent ?? "";
+      out += pre ? raw : raw.replace(/[\r\n]+/g, " ");
       return;
     }
     if (n.nodeType !== Node.ELEMENT_NODE) return;
@@ -170,11 +172,32 @@ function renderedText(root: Node, keep: (n: Node) => boolean = () => true): stri
     }
     const isBlock = n !== root && BLOCK_TAGS.has(tag);
     if (isBlock && out && !out.endsWith("\n")) out += "\n";
-    for (let c = n.firstChild; c; c = c.nextSibling) walk(c);
+    const inPre = pre || tag === "PRE";
+    for (let c = n.firstChild; c; c = c.nextSibling) walk(c, inPre);
     if (isBlock && out && !out.endsWith("\n")) out += "\n";
   };
-  walk(root);
+  walk(root, false);
   return out.trim();
+}
+
+function isInlineAttrPart(n: ChildNode): boolean {
+  if (n.nodeType === Node.COMMENT_NODE || n.nodeType === Node.TEXT_NODE) return true;
+  if (n.nodeType !== Node.ELEMENT_NODE) return false;
+  const el = n as Element;
+  if (
+    el.tagName === "BR" ||
+    BLOCK_TAGS.has(el.tagName) ||
+    ["IMG", "SVG", "VIDEO", "IFRAME", "STYLE", "SCRIPT"].includes(el.tagName) ||
+    hasVisualPaint(el)
+  )
+    return false;
+  return ![...el.querySelectorAll("*")].some(
+    (c) =>
+      c.tagName === "BR" ||
+      BLOCK_TAGS.has(c.tagName) ||
+      ["IMG", "SVG", "VIDEO", "IFRAME"].includes(c.tagName) ||
+      hasVisualPaint(c),
+  );
 }
 
 const QUOTE = "blockquote, div.gmail_quote, div.yahoo_quoted, div.protonmail_quote";
@@ -225,23 +248,35 @@ export function foldQuotes(html: string): string {
     while (cur && isBlankSpacer(cur)) cur = cur.previousSibling;
     if (
       cur?.nodeType === Node.ELEMENT_NODE &&
-      ["P", "DIV", "SPAN"].includes((cur as Element).tagName) &&
+      ["P", "DIV"].includes((cur as Element).tagName) &&
       !(cur as Element).querySelector("p, div, blockquote, img, table, ul, ol, pre, hr") &&
+      !hasVisualPaint(cur as Element) &&
       isAttribution(renderedText(cur))
     ) {
       first = cur;
+    } else if (cur && isInlineAttrPart(cur)) {
+      let start: ChildNode = cur;
+      while (start.previousSibling && isInlineAttrPart(start.previousSibling)) {
+        start = start.previousSibling;
+      }
+      let inlineText = "";
+      for (let n: ChildNode | null = start; ; n = n.nextSibling) {
+        if (n) inlineText += (n.textContent ?? "").replace(/[\r\n]+/g, " ");
+        if (!n || n === cur) break;
+      }
+      if (isAttribution(inlineText)) first = start;
     }
   }
 
-  const before = visibleWords(
-    doc,
+  const before = renderedText(
     doc.body,
     (n) =>
-      !first.contains(n) &&
-      n !== first &&
-      !!(first.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING),
+      n === doc.body ||
+      (!first.contains(n) &&
+        n !== first &&
+        !!(first.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING)),
   );
-  if (before === "") return html;
+  if (before === "" || isAttribution(before)) return html;
 
   while (first.previousSibling && isBlankSpacer(first.previousSibling)) {
     first.previousSibling.remove();
