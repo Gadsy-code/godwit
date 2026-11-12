@@ -250,7 +250,9 @@ func TestSettingsProxyMode(t *testing.T) {
 			t.Logf("settings user %q set %v; proxy user %q; draft pass %q sent %q", h.app.settings.ProxyUser, h.app.settings.ProxyPasswordSet, proxyUser(), p.proxy.pass, p.proxy.sent)
 		}
 	})
-	h.until("credentials saved", func() bool { return proxyUser() == "alice:pr0xy-pass" && h.app.settings.ProxyPasswordSet })
+	h.until("credentials saved", func() bool {
+		return proxyUser() == "alice:pr0xy-pass" && h.app.settings.ProxyPasswordSet && h.app.settings.ProxyPassword == ""
+	})
 	if h.app.settings.ProxyUser != "alice" || h.app.settings.ProxyPassword != "" {
 		t.Errorf("settings %q %q, want alice and no password", h.app.settings.ProxyUser, h.app.settings.ProxyPassword)
 	}
