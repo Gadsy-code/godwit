@@ -377,6 +377,17 @@ export function foldQuotes(html: string): string {
   );
   if (after !== "") return html;
 
+  // Only inline styles are read here: with a stylesheet in the mail, a class or id can change how
+  // a candidate lays out (a display:block span), so such candidates stay outside the fold.
+  const hasSheet = [...doc.querySelectorAll("style")].some((s) => s.textContent?.includes("{"));
+  const sheetStyled = (n: ChildNode) =>
+    hasSheet &&
+    n.nodeType === Node.ELEMENT_NODE &&
+    [n as Element, ...(n as Element).querySelectorAll("*")].some(
+      (c) => c.hasAttribute("class") || c.hasAttribute("id"),
+    );
+  const inlineLead = (n: ChildNode) => isInlineAttrPart(n) && !sheetStyled(n);
+
   let first: ChildNode = last;
   if (last.tagName === "BLOCKQUOTE") {
     let cur = last.previousSibling;
@@ -394,12 +405,13 @@ export function foldQuotes(html: string): string {
         (c) => isBlockBox(c) || MEDIA_TAGS.has(c.tagName),
       ) &&
       !hasVisualPaint(cur as Element) &&
+      !sheetStyled(cur) &&
       isAttribution(renderedText(cur))
     ) {
       first = cur;
-    } else if (cur && isInlineAttrPart(cur)) {
+    } else if (cur && inlineLead(cur)) {
       let start: ChildNode = cur;
-      while (start.previousSibling && isInlineAttrPart(start.previousSibling)) {
+      while (start.previousSibling && inlineLead(start.previousSibling)) {
         start = start.previousSibling;
       }
       const parentState = ancestorTextState(cur.parentElement);

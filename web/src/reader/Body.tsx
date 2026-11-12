@@ -279,18 +279,30 @@ function attach(
       const chain: HTMLElement[] = [];
       for (let p = fold.parentElement; p; p = p.parentElement) chain.unshift(p);
       let bg: Color = darkCanvas ? [10, 10, 10, 1] : [255, 255, 255, 1];
-      let imageBacked = false;
+      // A backdrop not modelled here (an image, a table column's paint): leave the mail's colour.
+      let unknownBackdrop = false;
+      const painted = (cs: CSSStyleDeclaration) =>
+        (parse(cs.backgroundColor)?.[3] ?? 0) > 0 ||
+        (!!cs.backgroundImage && cs.backgroundImage !== "none");
       for (const el of chain) {
+        // A cell's columns paint under it, as dark.ts protects them.
+        if (
+          (el.tagName === "TD" || el.tagName === "TH") &&
+          [...(el.closest("table")?.querySelectorAll("col, colgroup") ?? [])].some((c) =>
+            painted(win.getComputedStyle(c)),
+          )
+        )
+          unknownBackdrop = true;
         const cs = win.getComputedStyle(el);
         const c = parse(cs.backgroundColor);
         if (c && c[3] > 0) {
-          if (c[3] >= 1) imageBacked = false; // the element's colour sits under its own image
+          if (c[3] >= 1) unknownBackdrop = false; // an opaque colour covers what is under it
           bg = over(c, bg);
         }
-        if (cs.backgroundImage && cs.backgroundImage !== "none") imageBacked = true;
+        if (cs.backgroundImage && cs.backgroundImage !== "none") unknownBackdrop = true;
       }
       // The fold carries the controls' inherited colour; only summary and rail get overrides.
-      const fg = imageBacked ? null : parse(win.getComputedStyle(fold).color);
+      const fg = unknownBackdrop ? null : parse(win.getComputedStyle(fold).color);
       let tone = "";
       if (fg) {
         const bgL = brightness(bg);
