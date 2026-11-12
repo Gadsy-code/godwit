@@ -314,6 +314,12 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
     "Do not pay yet.",
   );
 
+  const cssBlockSpans = folded({
+    html: '<p>Hi</p><div><span style="display:block">Do not pay yet.</span><span style="display:block">On Tue, Bob wrote:</span></div><blockquote><p>Old request</p></blockquote>',
+  });
+  expect(cssBlockSpans?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
+  expect(cssBlockSpans?.textContent).toContain("Do not pay yet.");
+
   const trailingBr = folded({
     html: "<p>Hi</p><div>On Tue, Bob wrote:<br></div><blockquote><p>Old request</p></blockquote>",
   });

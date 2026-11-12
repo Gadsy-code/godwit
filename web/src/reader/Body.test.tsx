@@ -1392,3 +1392,28 @@ test("quote fold controls keep light colors on dark plain-text and author-dark H
     Math.min(...channels(awareWin.getComputedStyle(awareSummary).color).slice(0, 3)),
   ).toBeGreaterThan(200);
 });
+
+test("fold summary inside a linked blockquote toggles without triggering openLink", async () => {
+  const { doc, win } = await start(
+    body(
+      1,
+      '<p>Reply</p><a data-href="https://example.com"><blockquote><p id="q">Old</p></blockquote></a>',
+      { collapseQuotes: true },
+    ),
+  );
+  const summary = doc.querySelector("details.godwit-quote-fold > summary") as HTMLElement;
+  const pill = summary.querySelector(".godwit-quote-pill") as HTMLElement;
+  const click = new win.MouseEvent("click", { bubbles: true, cancelable: true });
+  pill.dispatchEvent(click);
+  expect(click.defaultPrevented).toBe(false);
+  expect(api.openLink).not.toHaveBeenCalled();
+
+  const enter = new win.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+  summary.dispatchEvent(enter);
+  expect(enter.defaultPrevented).toBe(false);
+  expect(api.openLink).not.toHaveBeenCalled();
+
+  // Clicking the quoted mail content itself still opens the surrounding link.
+  (doc.getElementById("q") as HTMLElement).click();
+  expect(api.openLink).toHaveBeenCalledExactlyOnceWith("https://example.com");
+});

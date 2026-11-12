@@ -172,6 +172,25 @@ const BLOCK_TAGS = new Set([
   "UL",
 ]);
 
+const INLINE_DISPLAYS = new Set([
+  "inline",
+  "inline-block",
+  "inline-flex",
+  "inline-grid",
+  "inline-table",
+  "contents",
+  "none",
+]);
+
+function isBlockBox(el: Element): boolean {
+  const disp = lastStyleValue(el.getAttribute("style") ?? "", "display");
+  if (disp !== null) {
+    const first = disp.split(/\s+/)[0];
+    return !INLINE_DISPLAYS.has(disp) && first !== "inline";
+  }
+  return BLOCK_TAGS.has(el.tagName);
+}
+
 const PRE_WS_VALUES = new Set(["pre", "pre-wrap", "pre-line", "break-spaces"]);
 
 type TextState = { pre: boolean; visHidden: boolean; zeroFont: boolean };
@@ -224,13 +243,13 @@ function renderedText(root: Node, keep: (n: Node) => boolean = () => true): stri
       if (!next.visHidden && keep(n)) out += "\n";
       return;
     }
-    const isBlock = n !== root && BLOCK_TAGS.has(tag);
+    const isBlock = n !== root && isBlockBox(el);
     const beforeLen = out.length;
     if (isBlock && out && !out.endsWith("\n")) out += "\n";
     for (let c = n.firstChild; c; c = c.nextSibling) walk(c, next);
     if (out.length === beforeLen + 1 && isBlock && out.endsWith("\n")) {
       out = out.slice(0, beforeLen);
-    } else if (isBlock && out.length > beforeLen && !out.endsWith("\n")) {
+    } else if (isBlock && out && !out.endsWith("\n")) {
       out += "\n";
     }
   };
@@ -244,7 +263,7 @@ function isInlineAttrPart(n: ChildNode): boolean {
   const el = n as Element;
   if (
     el.tagName === "BR" ||
-    BLOCK_TAGS.has(el.tagName) ||
+    isBlockBox(el) ||
     ["IMG", "SVG", "VIDEO", "IFRAME", "STYLE", "SCRIPT"].includes(el.tagName) ||
     hasVisualPaint(el)
   )
@@ -252,7 +271,7 @@ function isInlineAttrPart(n: ChildNode): boolean {
   return ![...el.querySelectorAll("*")].some(
     (c) =>
       c.tagName === "BR" ||
-      BLOCK_TAGS.has(c.tagName) ||
+      isBlockBox(c) ||
       ["IMG", "SVG", "VIDEO", "IFRAME"].includes(c.tagName) ||
       hasVisualPaint(c),
   );
@@ -328,8 +347,10 @@ export function foldQuotes(html: string): string {
     }
     if (
       cur?.nodeType === Node.ELEMENT_NODE &&
-      ["P", "DIV"].includes((cur as Element).tagName) &&
-      !(cur as Element).querySelector("p, div, blockquote, img, table, ul, ol, pre, hr") &&
+      isBlockBox(cur as Element) &&
+      ![...(cur as Element).querySelectorAll("*")].some(
+        (c) => isBlockBox(c) || ["IMG", "SVG", "VIDEO", "IFRAME", "HR"].includes(c.tagName),
+      ) &&
       !hasVisualPaint(cur as Element) &&
       isAttribution(renderedText(cur))
     ) {

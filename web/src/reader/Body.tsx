@@ -479,12 +479,14 @@ function attach(
       setTip(null);
       return;
     }
+    if ((e.target as Element | null)?.closest?.("[data-godwit-ui]")) return;
     const href = linkOf(e.target);
     if (href !== null) open(href);
     if (href !== null || (e.target as Element | null)?.closest?.("a,area")) e.preventDefault();
   });
   on<KeyboardEvent>(doc, "keydown", (e) => {
     if (e.key !== "Enter" || e.isComposing) return;
+    if ((e.target as Element | null)?.closest?.("[data-godwit-ui]")) return;
     const href = linkOf(e.target);
     if (href === null) return;
     e.preventDefault();
