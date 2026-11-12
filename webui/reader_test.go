@@ -1135,21 +1135,54 @@ func TestReaderInlinePixelsCarryIntoTheProxyBudget(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, f.image(t, 6, srv.URL+"/r.png").Code, "72 MP inline + 36 MP remote is over 100 MP")
 }
 
-// The reader page tells the frame whether to fold quoted text, as the setting says.
+// The reader page tells the frame whether to fold quoted text, as the setting says,
+// and propagates changes to already-loaded messages immediately.
 func TestReaderBodyCarriesCollapseQuotes(t *testing.T) {
 	f := newReaderFixture(t)
 	m := f.remoteMail(t, "Re: lunch", "https://tracker.example/pixel.png")
-	b, err := f.p.Load(pageCtx(f.page(m.ID)))
+	k := f.page(m.ID)
+	b, err := f.p.Load(pageCtx(k))
 	require.NoError(t, err)
 	assert.False(t, b.CollapseQuotes, "off by default")
 
 	st, err := f.e.Svc.GetSettings(t.Context())
 	require.NoError(t, err)
 	st.CollapseQuotes = true
-	_, err = f.e.Svc.SetSettings(t.Context(), st)
+	st, err = f.e.Svc.SetSettings(t.Context(), st)
 	require.NoError(t, err)
+	f.r.SettingsChanged(st)
+
+	// Already-bound page receives the updated preference and cached Load reflects it too.
+	emitted := f.waitEmitted(t, k)
+	assert.True(t, emitted.CollapseQuotes)
+	assert.Greater(t, emitted.Version, b.Version)
+	cached, err := f.p.Load(pageCtx(k))
+	require.NoError(t, err)
+	assert.True(t, cached.CollapseQuotes)
+	assert.Equal(t, emitted.Version, cached.Version)
+
+	// Unrelated settings changes update Theme without re-emitting the body.
+	f.mu.Lock()
+	f.emitted = nil
+	f.mu.Unlock()
+	st.Theme = "dark"
+	f.r.SettingsChanged(st)
+	f.mu.Lock()
+	assert.Empty(t, f.emitted)
+	f.mu.Unlock()
+	cached, err = f.p.Load(pageCtx(k))
+	require.NoError(t, err)
+	assert.Equal(t, "dark", cached.Theme.Mode)
+
+	// Turning CollapseQuotes back off unfolds the already-loaded message too.
+	st.CollapseQuotes = false
+	f.r.SettingsChanged(st)
+	unfolded := f.waitEmitted(t, k)
+	assert.False(t, unfolded.CollapseQuotes)
+	assert.Greater(t, unfolded.Version, cached.Version)
+
 	m2 := f.remoteMail(t, "Re: dinner", "https://tracker.example/pixel2.png")
 	b, err = f.p.Load(pageCtx(f.page(m2.ID)))
 	require.NoError(t, err)
-	assert.True(t, b.CollapseQuotes)
+	assert.True(t, b.CollapseQuotes, "persisted DB setting still applies to newly built messages when no newer SettingsChanged raced")
 }

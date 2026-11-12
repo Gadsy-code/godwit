@@ -108,7 +108,7 @@ type ReaderDeps struct {
 
 // Reader keeps the reader pages (role "reader"), each bound to a message:
 // its body, version and images. It is not bound: the pages reach it only
-// through ReaderPage; native calls Bind, Unbind and Allow.
+// through ReaderPage; native calls Bind, Unbind, Allow and SettingsChanged.
 type Reader struct {
 	pages *Pages
 	d     ReaderDeps
@@ -118,11 +118,13 @@ type Reader struct {
 	getAvatar  func(ctx context.Context, svc *core.Service, id int64) (core.Avatar, error)
 	getInline  func(ctx context.Context, svc *core.Service, id int64, each func(cid string, a mail.Attachment)) error
 
-	mu      sync.Mutex
-	svc     *core.Service
-	version int64             // the last version given out
-	bound   map[any]int64     // page key → its message
-	msgs    map[int64]*bodyOf // per message with a page bound
+	mu          sync.Mutex
+	svc         *core.Service
+	version     int64             // the last version given out
+	settingsSeq int64             // bumped on SettingsChanged so in-flight builds see newer preferences
+	settings    *core.Settings    // latest SettingsChanged snapshot
+	bound       map[any]int64     // page key → its message
+	msgs        map[int64]*bodyOf // per message with a page bound
 }
 
 // bodyOf is a bound message's state.
@@ -261,6 +263,39 @@ func (r *Reader) Translate(message int64, texts map[string]string) {
 	r.emitTranslation(message, st)
 }
 
+// SettingsChanged updates cached reader bodies for st and re-emits bound pages
+// when CollapseQuotes changes so open messages fold or unfold immediately.
+func (r *Reader) SettingsChanged(st core.Settings) {
+	theme := ThemeOf(st)
+	locale := i18n.Language()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cp := st
+	r.settings = &cp
+	r.settingsSeq++
+	for message, s := range r.msgs {
+		if s.original == nil || s.body == nil {
+			continue
+		}
+		foldChanged := s.original.CollapseQuotes != st.CollapseQuotes
+		s.original.Theme, s.original.Locale, s.original.CollapseQuotes = theme, locale, st.CollapseQuotes
+		s.body.Theme, s.body.Locale = theme, locale
+		if !foldChanged {
+			continue
+		}
+		r.version++
+		b := *s.body
+		b.Version = r.version
+		b.CollapseQuotes = st.CollapseQuotes
+		s.body = &b
+		for k, m := range r.bound {
+			if m == message {
+				r.d.Emit(k, b)
+			}
+		}
+	}
+}
+
 // emitTranslation applies the current choice to the cached original, with r.mu held.
 func (r *Reader) emitTranslation(message int64, st *bodyOf) {
 	b := translateBody(*st.original, st.translations)
@@ -343,6 +378,9 @@ func (r *Reader) reload(message int64, change func(*bodyOf)) {
 
 // build keeps the body only while its build generation v is current.
 func (r *Reader) build(ctx context.Context, svc *core.Service, message, v int64, allowed bool) (ReaderBody, error) {
+	r.mu.Lock()
+	seq := r.settingsSeq
+	r.mu.Unlock()
 	m, err := r.getMessage(ctx, svc, message, allowed)
 	if err != nil {
 		return ReaderBody{}, err
@@ -362,6 +400,11 @@ func (r *Reader) build(ctx context.Context, svc *core.Service, message, v int64,
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.settingsSeq != seq && r.settings != nil {
+		b.Theme = ThemeOf(*r.settings)
+		b.Locale = i18n.Language()
+		b.CollapseQuotes = r.settings.CollapseQuotes
+	}
 	if s := r.msgs[message]; s != nil && s.generation == v {
 		if s.body == nil {
 			r.version++
