@@ -1330,6 +1330,7 @@ test("quote fold controls stay readable on naturally dark HTML surfaces in light
   for (const html of [
     '<div id="surface" style="background:#000;color:#fff"><p>Reply</p><blockquote>Quote</blockquote></div>',
     '<div id="surface" style="background:#000"><p style="color:#fff">Reply</p><blockquote style="color:#ccc">Quote</blockquote></div>',
+    '<div id="surface" style="background-color:#fff;background-image:url(godwit-img://m9/dark);color:#fff"><p>Reply</p><blockquote>Quote</blockquote></div>',
   ]) {
     cleanup();
     const { doc, win } = await start(body(1, html, { theme, collapseQuotes: true }));

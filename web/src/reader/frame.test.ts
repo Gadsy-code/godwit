@@ -352,6 +352,12 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
       html: '<p>Thanks!</p><blockquote>Original</blockquote><span style="display:none">Message ID: x</span>',
     })?.querySelector("details"),
   ).not.toBeNull();
+  // A zero-font-size layout wrapper whose child restores a visible font size stays out of the fold.
+  const zeroFontRestored = folded({
+    html: '<p>Hi</p><p>On Tue, Bob wrote:</p><div style="font-size:0"><span style="font-size:14px">Do not pay yet.</span></div><blockquote>Old request</blockquote>',
+  });
+  expect(zeroFontRestored?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
+  expect(zeroFontRestored?.textContent).toContain("Do not pay yet.");
 
   // Bare-text/inline attribution inside a reply container folds with the quote while keeping reply text out.
   const inlineAttr = folded({

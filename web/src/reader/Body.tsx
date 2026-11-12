@@ -340,7 +340,6 @@ function attach(
       let imageBacked = false;
       for (const el of chain) {
         const cs = win.getComputedStyle(el);
-        if (cs.backgroundImage && cs.backgroundImage !== "none") imageBacked = true;
         const c = rgbaOf(cs.backgroundColor);
         if (c && c[3] > 0) {
           if (c[3] >= 1) imageBacked = false;
@@ -350,6 +349,7 @@ function attach(
             c[2] * c[3] + bg[2] * (1 - c[3]),
           ];
         }
+        if (cs.backgroundImage && cs.backgroundImage !== "none") imageBacked = true;
       }
       if (summary && !imageBacked) {
         const fg = rgbaOf(win.getComputedStyle(summary).color);

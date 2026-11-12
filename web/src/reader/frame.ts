@@ -107,22 +107,31 @@ export function plainHTML(text: string, fold = false): string {
   );
 }
 
-const HIDDEN_STYLE_RE =
-  /(?:^|[;\s])(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0+)?|font-size\s*:\s*0(?:[a-z%]+)?)(?:\s*!important)?\s*(?:;|$)/i;
+function lastStyleValue(style: string, prop: string): string | null {
+  let val: string | null = null;
+  const re = new RegExp(`(?:^|[;\\s])${prop}\\s*:\\s*([^;!]+)`, "gi");
+  for (const m of style.matchAll(re)) val = m[1].trim().toLowerCase();
+  return val;
+}
 
-function isHiddenElement(el: Element): boolean {
-  if (el.tagName === "STYLE" || el.tagName === "SCRIPT" || el.hasAttribute("hidden")) return true;
+// Irreversible subtree hiding: no descendant override can make anything inside visible.
+function isHiddenSubtree(el: Element): boolean {
+  if (el.tagName === "STYLE" || el.tagName === "SCRIPT") return true;
   const st = el.getAttribute("style") ?? "";
-  if (HIDDEN_STYLE_RE.test(st)) return true;
+  const disp = lastStyleValue(st, "display");
+  if (disp === "none" || (el.hasAttribute("hidden") && !disp)) return true;
+  const op = lastStyleValue(st, "opacity");
+  if (op !== null && Number(op) === 0) return true;
   return (
-    /(?:^|[;\s])(?:max-)?height\s*:\s*0(?:[a-z%]+)?(?:\s*!important)?\s*(?:;|$)/i.test(st) &&
-    /(?:^|[;\s])overflow(?:-y)?\s*:\s*hidden(?:\s*!important)?\s*(?:;|$)/i.test(st)
+    /(?:^|[;\s])(?:max-)?height\s*:\s*0(?:\.0+)?(?:[a-z%]+)?(?:\s*!important)?\s*(?:;|$)/i.test(
+      st,
+    ) && /(?:^|[;\s])overflow(?:-y)?\s*:\s*hidden(?:\s*!important)?\s*(?:;|$)/i.test(st)
   );
 }
 
 function isInsideHidden(el: Element): boolean {
   for (let p: Element | null = el; p; p = p.parentElement) {
-    if (isHiddenElement(p)) return true;
+    if (isHiddenSubtree(p)) return true;
   }
   return false;
 }
@@ -162,59 +171,67 @@ const BLOCK_TAGS = new Set([
 
 const PRE_WS_VALUES = new Set(["pre", "pre-wrap", "pre-line", "break-spaces"]);
 
-function stepWhiteSpace(el: Element, inherited: boolean): boolean {
-  if (el.tagName === "PRE") return true;
+type TextState = { pre: boolean; visHidden: boolean; zeroFont: boolean };
+
+function stepTextState(el: Element, s: TextState): TextState {
   const st = el.getAttribute("style") ?? "";
-  let ws: string | null = null;
-  for (const m of st.matchAll(
-    /(?:^|[;\s])white-space\s*:\s*([a-z-]+)(?:\s*!important)?\s*(?:;|$)/gi,
-  )) {
-    ws = m[1].toLowerCase();
-  }
-  return ws === null ? inherited : PRE_WS_VALUES.has(ws);
+  const ws = lastStyleValue(st, "white-space");
+  const pre = el.tagName === "PRE" ? true : ws === null ? s.pre : PRE_WS_VALUES.has(ws);
+  const vis = lastStyleValue(st, "visibility");
+  const visHidden =
+    vis === "hidden" || vis === "collapse" ? true : vis === "visible" ? false : s.visHidden;
+  const fs = lastStyleValue(st, "font-size");
+  const hasFontAttr = el.tagName === "FONT" && el.hasAttribute("size");
+  const zeroFont =
+    fs !== null
+      ? /^0(?:\.0+)?(?:[a-z%]+)?$/.test(fs)
+      : hasFontAttr
+        ? el.getAttribute("size")?.trim() === "0"
+        : s.zeroFont;
+  return { pre, visHidden, zeroFont };
 }
 
-function ancestorPreservesNewlines(node: Node | null): boolean {
+function ancestorTextState(node: Node | null): TextState {
   const chain: Element[] = [];
   for (let p = node instanceof Element ? node : node?.parentElement; p; p = p.parentElement) {
     chain.unshift(p);
   }
-  let pre = false;
-  for (const el of chain) pre = stepWhiteSpace(el, pre);
-  return pre;
+  let state: TextState = { pre: false, visHidden: false, zeroFont: false };
+  for (const el of chain) state = stepTextState(el, state);
+  return state;
 }
 
 // Visible text of root with <br>, block boundaries, and CSS-preformatted newlines preserved as "\n"
-// (while skipping hidden subtrees and folding normal source wraps inside text nodes to spaces).
+// (while skipping hidden subtrees, inheritable visibility/zero-font text, and normal source wraps).
 function renderedText(root: Node, keep: (n: Node) => boolean = () => true): string {
   let out = "";
-  const walk = (n: Node, pre: boolean) => {
+  const walk = (n: Node, s: TextState) => {
     if (n.nodeType === Node.TEXT_NODE) {
-      if (!keep(n)) return;
+      if (s.visHidden || s.zeroFont || !keep(n)) return;
       const raw = n.textContent ?? "";
-      out += pre ? raw.replace(/\r\n?/g, "\n") : raw.replace(/[\r\n]+/g, " ");
+      out += s.pre ? raw.replace(/\r\n?/g, "\n") : raw.replace(/[\r\n]+/g, " ");
       return;
     }
     if (n.nodeType !== Node.ELEMENT_NODE) return;
     const el = n as Element;
-    if (isHiddenElement(el)) return;
+    if (isHiddenSubtree(el)) return;
     const tag = el.tagName;
+    const next = stepTextState(el, s);
     if (tag === "BR") {
-      if (keep(n)) out += "\n";
+      if (!next.visHidden && keep(n)) out += "\n";
       return;
     }
     const isBlock = n !== root && BLOCK_TAGS.has(tag);
     const beforeLen = out.length;
     if (isBlock && out && !out.endsWith("\n")) out += "\n";
-    const inPre = stepWhiteSpace(el, pre);
-    for (let c = n.firstChild; c; c = c.nextSibling) walk(c, inPre);
+    for (let c = n.firstChild; c; c = c.nextSibling) walk(c, next);
     if (out.length === beforeLen + 1 && isBlock && out.endsWith("\n")) {
       out = out.slice(0, beforeLen);
     } else if (isBlock && out.length > beforeLen && !out.endsWith("\n")) {
       out += "\n";
     }
   };
-  walk(root, ancestorPreservesNewlines(root.parentElement));
+  walk(root, ancestorTextState(root.parentElement));
   return out.trim();
 }
 
@@ -261,6 +278,15 @@ function isBlankSpacer(n: ChildNode): boolean {
   );
 }
 
+function isEffectivelyInvisible(el: Element): boolean {
+  if (isHiddenSubtree(el)) return true;
+  if (renderedText(el) !== "") return false;
+  return ![el, ...el.querySelectorAll("*")].some(
+    (c) =>
+      ["IMG", "HR", "TABLE", "SVG", "VIDEO", "IFRAME"].includes(c.tagName) || hasVisualPaint(c),
+  );
+}
+
 /**
  * An HTML body with the quote at its end folded behind a button: the last outermost quote block
  * (plus a single-line "On … wrote:" lead right before a bare blockquote), when the message has
@@ -293,7 +319,7 @@ export function foldQuotes(html: string): string {
     while (
       cur &&
       (isBlankSpacer(cur) ||
-        (cur.nodeType === Node.ELEMENT_NODE && isHiddenElement(cur as Element)))
+        (cur.nodeType === Node.ELEMENT_NODE && isEffectivelyInvisible(cur as Element)))
     ) {
       cur = cur.previousSibling;
     }
@@ -310,15 +336,17 @@ export function foldQuotes(html: string): string {
       while (start.previousSibling && isInlineAttrPart(start.previousSibling)) {
         start = start.previousSibling;
       }
-      const parentPre = ancestorPreservesNewlines(cur.parentElement);
+      const parentState = ancestorTextState(cur.parentElement);
       let inlineText = "";
       for (let n: ChildNode | null = start; ; n = n.nextSibling) {
         if (n) {
           inlineText +=
             n.nodeType === Node.TEXT_NODE
-              ? parentPre
-                ? (n.textContent ?? "").replace(/\r\n?/g, "\n")
-                : (n.textContent ?? "").replace(/[\r\n]+/g, " ")
+              ? parentState.visHidden || parentState.zeroFont
+                ? ""
+                : parentState.pre
+                  ? (n.textContent ?? "").replace(/\r\n?/g, "\n")
+                  : (n.textContent ?? "").replace(/[\r\n]+/g, " ")
               : renderedText(n);
         }
         if (!n || n === cur) break;
