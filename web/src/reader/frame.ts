@@ -110,35 +110,55 @@ export function plainHTML(text: string, fold = false): string {
   );
 }
 
-function lastStyleValue(style: string, prop: string): string | null {
-  let val: string | null = null;
-  const re = new RegExp(`(?:^|[;\\s])${prop}\\s*:\\s*([^;!]+)`, "gi");
-  for (const m of style.matchAll(re)) val = m[1].trim().toLowerCase();
-  return val;
+// An element's inline declarations, the last of each property winning, parsed once per element.
+const declared = new WeakMap<Element, Map<string, string>>();
+function styleValue(el: Element, prop: string): string | null {
+  let decls = declared.get(el);
+  if (!decls) {
+    decls = new Map();
+    for (const decl of (el.getAttribute("style") ?? "").split(";")) {
+      const colon = decl.indexOf(":");
+      if (colon < 0) continue;
+      const value = decl
+        .slice(colon + 1)
+        .replace(/!\s*important/i, "")
+        .trim()
+        .toLowerCase();
+      decls.set(decl.slice(0, colon).trim().toLowerCase(), value);
+    }
+    declared.set(el, decls);
+  }
+  return decls.get(prop) ?? null;
 }
 
-const isZeroLength = (v: string | null) => v !== null && /^0(?:\.0+)?(?:[a-z%]+)?$/.test(v);
+const isZeroLength = (v: string | null | undefined) =>
+  v != null && /^0(?:\.0+)?(?:[a-z%]+)?$/.test(v);
+
+// Whether vertical padding re-opens a zero-height clip box (top/bottom of the shorthand, or longhands).
+function hasVerticalPadding(el: Element): boolean {
+  const pad = styleValue(el, "padding")?.split(/\s+/);
+  const top = pad?.[0];
+  const bottom = pad?.[2] ?? pad?.[0];
+  return [top, bottom, styleValue(el, "padding-top"), styleValue(el, "padding-bottom")].some(
+    (v) => v != null && !isZeroLength(v),
+  );
+}
 
 // Irreversible subtree hiding: no descendant override can make anything inside visible.
 function isHiddenSubtree(el: Element): boolean {
   if (el.tagName === "STYLE" || el.tagName === "SCRIPT") return true;
-  const st = el.getAttribute("style") ?? "";
-  const disp = lastStyleValue(st, "display");
+  const disp = styleValue(el, "display");
   if (disp === "none" || (el.hasAttribute("hidden") && !disp)) return true;
-  const op = lastStyleValue(st, "opacity");
+  const op = styleValue(el, "opacity");
   if (op !== null && Number(op) === 0) return true;
   // Zero-height overflow:hidden preheaders clip descendants only when neither min-height nor
   // vertical padding re-opens the clip box.
-  const h = lastStyleValue(st, "height");
-  const maxH = lastStyleValue(st, "max-height");
-  const minH = lastStyleValue(st, "min-height");
-  const ov = lastStyleValue(st, "overflow-y") ?? lastStyleValue(st, "overflow");
-  const hasPadding =
-    /(?:^|[;\s])padding(?:-(?:top|bottom))?\s*:\s*(?!0(?:\.0+)?(?:[a-z%]+)?(?:\s|$|;|!))/i.test(st);
+  const minH = styleValue(el, "min-height");
+  const ov = styleValue(el, "overflow-y") ?? styleValue(el, "overflow");
   return (
-    (isZeroLength(maxH) || isZeroLength(h)) &&
+    (isZeroLength(styleValue(el, "max-height")) || isZeroLength(styleValue(el, "height"))) &&
     (minH === null || isZeroLength(minH)) &&
-    !hasPadding &&
+    !hasVerticalPadding(el) &&
     ov !== null &&
     ov.split(/\s+/).includes("hidden")
   );
@@ -192,17 +212,19 @@ const INLINE_TAGS = new Set([
   "WBR",
 ]);
 
-const NON_BLOCK_REPLACED = new Set([
-  "BR",
+// Replaced elements that show something without text: they make a block more than an attribution.
+const MEDIA_TAGS = new Set([
   "IMG",
   "SVG",
   "VIDEO",
   "IFRAME",
-  "STYLE",
-  "SCRIPT",
-  "AREA",
-  "MAP",
+  "CANVAS",
+  "PICTURE",
+  "OBJECT",
+  "EMBED",
 ]);
+
+const NON_BLOCK_REPLACED = new Set([...MEDIA_TAGS, "BR", "STYLE", "SCRIPT", "AREA", "MAP"]);
 
 const INLINE_DISPLAYS = new Set([
   "inline",
@@ -215,7 +237,7 @@ const INLINE_DISPLAYS = new Set([
 ]);
 
 function isBlockBox(el: Element): boolean {
-  const disp = lastStyleValue(el.getAttribute("style") ?? "", "display");
+  const disp = styleValue(el, "display");
   if (disp !== null) {
     const first = disp.split(/\s+/)[0];
     return !INLINE_DISPLAYS.has(disp) && first !== "inline";
@@ -228,13 +250,12 @@ const PRE_WS_VALUES = new Set(["pre", "pre-wrap", "pre-line", "break-spaces"]);
 type TextState = { pre: boolean; visHidden: boolean; zeroFont: boolean };
 
 function stepTextState(el: Element, s: TextState): TextState {
-  const st = el.getAttribute("style") ?? "";
-  const ws = lastStyleValue(st, "white-space");
+  const ws = styleValue(el, "white-space");
   const pre = el.tagName === "PRE" ? true : ws === null ? s.pre : PRE_WS_VALUES.has(ws);
-  const vis = lastStyleValue(st, "visibility");
+  const vis = styleValue(el, "visibility");
   const visHidden =
     vis === "hidden" || vis === "collapse" ? true : vis === "visible" ? false : s.visHidden;
-  const fs = lastStyleValue(st, "font-size");
+  const fs = styleValue(el, "font-size");
   // HTML <font size="..."> clamps valid numeric values to 1..7 (x-small..xxx-large), never 0 px.
   const hasNumericFontSizeAttr =
     el.tagName === "FONT" && /^[+-]?\d+/.test((el.getAttribute("size") ?? "").trim());
@@ -299,19 +320,9 @@ function isInlineAttrPart(n: ChildNode): boolean {
   if (n.nodeType === Node.COMMENT_NODE || n.nodeType === Node.TEXT_NODE) return true;
   if (n.nodeType !== Node.ELEMENT_NODE) return false;
   const el = n as Element;
-  if (
-    el.tagName === "BR" ||
-    isBlockBox(el) ||
-    ["IMG", "SVG", "VIDEO", "IFRAME", "STYLE", "SCRIPT"].includes(el.tagName) ||
-    hasVisualPaint(el)
-  )
-    return false;
-  return ![...el.querySelectorAll("*")].some(
-    (c) =>
-      c.tagName === "BR" ||
-      isBlockBox(c) ||
-      ["IMG", "SVG", "VIDEO", "IFRAME"].includes(c.tagName) ||
-      hasVisualPaint(c),
+  if (el.tagName === "STYLE" || el.tagName === "SCRIPT") return false;
+  return ![el, ...el.querySelectorAll("*")].some(
+    (c) => c.tagName === "BR" || isBlockBox(c) || MEDIA_TAGS.has(c.tagName) || hasVisualPaint(c),
   );
 }
 
@@ -343,7 +354,7 @@ function isEffectivelyInvisible(el: Element): boolean {
   if (renderedText(el) !== "") return false;
   return ![el, ...el.querySelectorAll("*")].some(
     (c) =>
-      ["IMG", "HR", "TABLE", "SVG", "VIDEO", "IFRAME"].includes(c.tagName) || hasVisualPaint(c),
+      MEDIA_TAGS.has(c.tagName) || c.tagName === "HR" || c.tagName === "TABLE" || hasVisualPaint(c),
   );
 }
 
@@ -354,16 +365,9 @@ function isEffectivelyInvisible(el: Element): boolean {
  */
 export function foldQuotes(html: string): string {
   const doc = new DOMParser().parseFromString(`<!doctype html><body>${html}`, "text/html");
-  const visibleQuotes = [...doc.body.querySelectorAll(QUOTE)].filter((q) => !isInsideHidden(q));
-  const last = visibleQuotes
-    .filter((q) => {
-      let p = q.parentElement;
-      while (p) {
-        if (p.matches(QUOTE) && !isInsideHidden(p)) return false;
-        p = p.parentElement;
-      }
-      return true;
-    })
+  // A visible quote's ancestors are visible too, so the outermost ones are those in no other quote.
+  const last = [...doc.body.querySelectorAll(QUOTE)]
+    .filter((q) => !isInsideHidden(q) && !q.parentElement?.closest(QUOTE))
     .at(-1);
   if (!last) return html;
   const after = renderedText(
@@ -387,7 +391,7 @@ export function foldQuotes(html: string): string {
       cur?.nodeType === Node.ELEMENT_NODE &&
       isBlockBox(cur as Element) &&
       ![...(cur as Element).querySelectorAll("*")].some(
-        (c) => isBlockBox(c) || ["IMG", "SVG", "VIDEO", "IFRAME", "HR"].includes(c.tagName),
+        (c) => isBlockBox(c) || MEDIA_TAGS.has(c.tagName),
       ) &&
       !hasVisualPaint(cur as Element) &&
       isAttribution(renderedText(cur))

@@ -1174,6 +1174,31 @@ func TestReaderBodyCarriesCollapseQuotes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "dark", cached.Theme.Mode)
 
+	// A change made while a reload is in flight survives the reload failing: the cached original
+	// it falls back on carries the new preference.
+	started, release := make(chan struct{}), make(chan struct{})
+	f.r.getMessage = func(context.Context, *core.Service, int64, bool) (core.Message, error) {
+		close(started)
+		<-release
+		return core.Message{}, errors.New("mail unavailable")
+	}
+	f.mu.Lock()
+	f.emitted = nil
+	f.mu.Unlock()
+	f.r.Allow(m.ID)
+	<-started
+	st.CollapseQuotes = false
+	f.r.SettingsChanged(st)
+	close(release)
+	assert.False(t, f.waitEmitted(t, k).CollapseQuotes)
+	st.CollapseQuotes = true
+	f.r.SettingsChanged(st)
+	cached = f.waitEmitted(t, k)
+	require.True(t, cached.CollapseQuotes)
+	f.r.getMessage = func(ctx context.Context, svc *core.Service, id int64, remote bool) (core.Message, error) {
+		return svc.GetMessageLazyImages(ctx, id, remote)
+	}
+
 	// Turning CollapseQuotes back off unfolds the already-loaded message too.
 	st.CollapseQuotes = false
 	f.r.SettingsChanged(st)

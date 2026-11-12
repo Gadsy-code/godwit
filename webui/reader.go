@@ -272,13 +272,15 @@ func (r *Reader) SettingsChanged(st core.Settings) {
 	cp := st
 	r.settings = &cp
 	for message, s := range r.msgs {
-		if s.original == nil || s.body == nil {
+		// The original too while a reload is in flight: a failed reload re-emits it.
+		if s.original != nil {
+			s.original.Theme, s.original.Locale, s.original.CollapseQuotes = theme, locale, st.CollapseQuotes
+		}
+		if s.body == nil {
 			continue
 		}
-		foldChanged := s.original.CollapseQuotes != st.CollapseQuotes
-		s.original.Theme, s.original.Locale, s.original.CollapseQuotes = theme, locale, st.CollapseQuotes
 		s.body.Theme, s.body.Locale = theme, locale
-		if !foldChanged {
+		if s.body.CollapseQuotes == st.CollapseQuotes {
 			continue
 		}
 		r.version++

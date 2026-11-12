@@ -1,10 +1,10 @@
 import type { Theme } from "@/mygo";
 
-type Color = [number, number, number, number];
+export type Color = [number, number, number, number];
 const clamp = (n: number, min = 0, max = 1) => Math.max(min, Math.min(max, n));
 const rounded = (c: Color): Color => [Math.round(c[0]), Math.round(c[1]), Math.round(c[2]), c[3]];
 const css = (c: Color) => `rgba(${c.slice(0, 3).map(Math.round).join(",")},${c[3]})`;
-const brightness = (c: Color) => (c[0] * 299 + c[1] * 587 + c[2] * 114) / 1000;
+export const brightness = (c: Color) => (c[0] * 299 + c[1] * 587 + c[2] * 114) / 1000;
 const neutral = (c: Color) => Math.max(...c.slice(0, 3)) - Math.min(...c.slice(0, 3)) <= 12;
 const mix = (a: Color, b: Color, t: number): Color => [
   a[0] + (b[0] - a[0]) * t,
@@ -12,9 +12,9 @@ const mix = (a: Color, b: Color, t: number): Color => [
   a[2] + (b[2] - a[2]) * t,
   1,
 ];
-const over = (front: Color, back: Color) => mix(back, front, front[3]);
+export const over = (front: Color, back: Color) => mix(back, front, front[3]);
 
-function parse(value: string): Color | null {
+export function parse(value: string): Color | null {
   if (value === "transparent") return [0, 0, 0, 0];
   const hex = /^#([\da-f]{3,8})$/i.exec(value)?.[1];
   if (hex && [3, 4, 6, 8].includes(hex.length)) {

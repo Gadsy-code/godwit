@@ -41,8 +41,9 @@ html {
   opacity: 0.6;
 }
 
-/* Bare blockquotes get the reader's 2 px bar (theme.QuoteBar) unless the mail styles its own. */
-:where(#godwit-body blockquote) {
+/* Bare blockquotes inside a folded quote get the reader's 2 px bar (theme.QuoteBar) unless the mail
+   styles its own; outside a fold, mail keeps its browser defaults. */
+:where(#godwit-body .godwit-quote-body blockquote) {
   margin: 8px 0;
   padding-left: 12px;
   border-left: 2px solid rgba(127, 127, 127, 0.28);

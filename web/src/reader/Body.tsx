@@ -5,7 +5,7 @@ import { ReaderPage as api, events, type ReaderBody, type ReaderGlass, type Them
 import { useT } from "@/shared/i18n";
 import { forwardShortcuts } from "@/shared/shortcuts";
 import { applyTheme, type Theme as PageTheme } from "@/shared/theme";
-import { adaptDarkMode } from "./dark";
+import { adaptDarkMode, brightness, type Color, over, parse } from "./dark";
 import { buildSrcdoc, frameScheme, isDark } from "./frame";
 
 const ignore = () => {};
@@ -269,48 +269,38 @@ function attach(
 
   // Quoted-text fold controls: sync accessible labels and contrast on custom-background mail
   // surfaces (including responsive resize updates).
-  const rgbaOf = (v: string): [number, number, number, number] | null => {
-    if (!/^rgba?\(/i.test(v)) return null;
-    const m = v.match(/[\d.]+/g)?.map(Number);
-    return m && m.length >= 3 ? [m[0], m[1], m[2], m[3] ?? 1] : null;
-  };
-  const luma = (c: [number, number, number]) => (c[0] * 299 + c[1] * 587 + c[2] * 114) / 1000;
+  // The colour each control was last given, so an unchanged surface writes (and recalcs) nothing.
+  const tones = new WeakMap<HTMLElement, string>();
   const syncFoldControls = () => {
-    const baseBg: [number, number, number] = darkCanvas ? [10, 10, 10] : [255, 255, 255];
     for (const fold of doc.querySelectorAll<HTMLDetailsElement>("details.godwit-quote-fold")) {
       const summary = fold.querySelector<HTMLElement>("summary");
       const rail = fold.querySelector<HTMLElement>(".godwit-quote-rail");
       summary?.setAttribute("aria-label", fold.open ? labels.collapse : labels.expand);
-      summary?.style.removeProperty("color");
-      rail?.style.removeProperty("color");
       const chain: HTMLElement[] = [];
       for (let p = fold.parentElement; p; p = p.parentElement) chain.unshift(p);
-      let bg = baseBg;
+      let bg: Color = darkCanvas ? [10, 10, 10, 1] : [255, 255, 255, 1];
       let imageBacked = false;
       for (const el of chain) {
         const cs = win.getComputedStyle(el);
-        const c = rgbaOf(cs.backgroundColor);
+        const c = parse(cs.backgroundColor);
         if (c && c[3] > 0) {
-          if (c[3] >= 1) imageBacked = false;
-          bg = [
-            c[0] * c[3] + bg[0] * (1 - c[3]),
-            c[1] * c[3] + bg[1] * (1 - c[3]),
-            c[2] * c[3] + bg[2] * (1 - c[3]),
-          ];
+          if (c[3] >= 1) imageBacked = false; // the element's colour sits under its own image
+          bg = over(c, bg);
         }
         if (cs.backgroundImage && cs.backgroundImage !== "none") imageBacked = true;
       }
-      if (summary && !imageBacked) {
-        const fg = rgbaOf(win.getComputedStyle(summary).color);
-        if (fg) {
-          const bgL = luma(bg);
-          const fgL = luma([fg[0], fg[1], fg[2]]);
-          const override =
-            bgL < 110 && fgL < 140 ? "#fafafa" : bgL > 145 && fgL > 160 ? "#0a0a0a" : "";
-          if (override) {
-            summary.style.color = override;
-            if (rail) rail.style.color = override;
-          }
+      // The fold carries the controls' inherited colour; only summary and rail get overrides.
+      const fg = imageBacked ? null : parse(win.getComputedStyle(fold).color);
+      let tone = "";
+      if (fg) {
+        const bgL = brightness(bg);
+        const fgL = brightness(fg);
+        tone = bgL < 110 && fgL < 140 ? "#fafafa" : bgL > 145 && fgL > 160 ? "#0a0a0a" : "";
+      }
+      for (const el of [summary, rail]) {
+        if (el && tones.get(el) !== tone) {
+          tones.set(el, tone);
+          el.style.color = tone;
         }
       }
     }

@@ -1317,9 +1317,7 @@ test("quote fold controls keep CSS states in auto-dark mode, show tooltips and c
     window.dispatchEvent(new Event("beforeprint"));
   });
   expect(fold.open).toBe(true);
-  expect(doc.querySelector("iframe") ?? document.querySelector("iframe")?.style.height).toBe(
-    "260px",
-  );
+  expect(document.querySelector("iframe")?.style.height).toBe("260px");
   act(() => {
     window.dispatchEvent(new Event("afterprint"));
   });

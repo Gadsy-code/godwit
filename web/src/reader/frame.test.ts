@@ -387,6 +387,13 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
   expect(minHeightVisible?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
   expect(minHeightVisible?.textContent).toContain("Do not pay yet.");
 
+  // So does bottom padding given through the shorthand's third value.
+  const paddedVisible = folded({
+    html: '<p>Hi</p><p>On Tue, Bob wrote:</p><div style="height:0;overflow:hidden;padding:0 0 12px">Do not pay yet.</div><blockquote>Old request</blockquote>',
+  });
+  expect(paddedVisible?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
+  expect(paddedVisible?.textContent).toContain("Do not pay yet.");
+
   // Bare-text/inline attribution inside a reply container folds with the quote while keeping reply text out.
   const inlineAttr = folded({
     html: '<div>Thanks!<br><br>On Tue, <span data-href="mailto:b@x">Bob</span> wrote:<br><blockquote>Original</blockquote></div>',
