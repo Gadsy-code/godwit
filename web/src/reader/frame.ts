@@ -507,6 +507,26 @@ export function foldQuotes(html: string): string {
     quoteBody.append(node);
     node = next;
   }
+  // The mail's stylesheet (scoped under #godwit-body by core/mail) must not reach the controls we
+  // added, such as `.mail span{display:none}` hiding the pill: then the quote stays as it came.
+  const added = [
+    fold,
+    quoteBody,
+    ...fold.querySelectorAll("summary, summary *, .godwit-quote-rail, .godwit-quote-rail *"),
+  ];
+  const reaches = (sel: string) => {
+    const local = sel
+      .trim()
+      .replace(/^#godwit-body(?:\.godwit-(?:dark|light))?(?=\s|$)/, "")
+      .trim();
+    if (!local) return false;
+    try {
+      return added.some((el) => el.matches(local));
+    } catch {
+      return false; // not a selector the browser applies either
+    }
+  };
+  if (selectors.some((list) => list.split(",").some(reaches))) return html;
   return doc.body.innerHTML;
 }
 

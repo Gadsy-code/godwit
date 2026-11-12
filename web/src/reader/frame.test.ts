@@ -413,6 +413,24 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
     });
     expect(structural?.querySelector("details")).toBeNull();
   }
+  // A mail rule that would reach the inserted controls (hiding the pill) leaves the quote unfolded;
+  // one that only reaches the mail's own elements does not.
+  for (const sheet of [
+    ".mail span{display:none}",
+    "#godwit-body .mail summary{display:none}",
+    "*{visibility:hidden}",
+  ]) {
+    expect(
+      folded({
+        html: `<style>${sheet}</style><div class="mail"><p>Reply</p><blockquote>Old</blockquote></div>`,
+      })?.querySelector("details"),
+    ).toBeNull();
+  }
+  expect(
+    folded({
+      html: '<style>#godwit-body .mail p{color:#333}</style><div class="mail"><p>Reply</p><blockquote>Old</blockquote></div>',
+    })?.querySelector("details"),
+  ).not.toBeNull();
   // A pseudo-element such as ::first-line does not depend on the quote's place.
   expect(
     folded({
