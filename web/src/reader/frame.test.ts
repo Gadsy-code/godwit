@@ -301,6 +301,19 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
   expect(multiLine?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
   expect(multiLine?.textContent).toContain("Do not pay yet.");
 
+  const preWrapMultiLine = folded({
+    html: '<p>Hi</p><div style="white-space:pre-wrap">Do not pay yet.\nOn Tue, Bob wrote:</div><blockquote><p>Old request</p></blockquote>',
+  });
+  expect(preWrapMultiLine?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
+  expect(preWrapMultiLine?.textContent).toContain("Do not pay yet.");
+
+  const inheritedPreMultiLine = folded({
+    html: '<div style="white-space:pre-wrap"><p>Hi</p><div>Do not pay yet.\nOn Tue, Bob wrote:</div><blockquote><p>Old request</p></blockquote></div>',
+  });
+  expect(inheritedPreMultiLine?.querySelector("details")?.textContent).not.toContain(
+    "Do not pay yet.",
+  );
+
   const trailingBr = folded({
     html: "<p>Hi</p><div>On Tue, Bob wrote:<br></div><blockquote><p>Old request</p></blockquote>",
   });

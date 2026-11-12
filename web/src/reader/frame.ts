@@ -160,15 +160,39 @@ const BLOCK_TAGS = new Set([
   "UL",
 ]);
 
-// Visible text of root with <br> and block boundaries preserved as "\n" (while skipping hidden
-// subtrees and folding raw source line wraps inside text nodes to spaces, as HTML layout does).
+const PRE_WS_VALUES = new Set(["pre", "pre-wrap", "pre-line", "break-spaces"]);
+
+function stepWhiteSpace(el: Element, inherited: boolean): boolean {
+  if (el.tagName === "PRE") return true;
+  const st = el.getAttribute("style") ?? "";
+  let ws: string | null = null;
+  for (const m of st.matchAll(
+    /(?:^|[;\s])white-space\s*:\s*([a-z-]+)(?:\s*!important)?\s*(?:;|$)/gi,
+  )) {
+    ws = m[1].toLowerCase();
+  }
+  return ws === null ? inherited : PRE_WS_VALUES.has(ws);
+}
+
+function ancestorPreservesNewlines(node: Node | null): boolean {
+  const chain: Element[] = [];
+  for (let p = node instanceof Element ? node : node?.parentElement; p; p = p.parentElement) {
+    chain.unshift(p);
+  }
+  let pre = false;
+  for (const el of chain) pre = stepWhiteSpace(el, pre);
+  return pre;
+}
+
+// Visible text of root with <br>, block boundaries, and CSS-preformatted newlines preserved as "\n"
+// (while skipping hidden subtrees and folding normal source wraps inside text nodes to spaces).
 function renderedText(root: Node, keep: (n: Node) => boolean = () => true): string {
   let out = "";
   const walk = (n: Node, pre: boolean) => {
     if (n.nodeType === Node.TEXT_NODE) {
       if (!keep(n)) return;
       const raw = n.textContent ?? "";
-      out += pre ? raw : raw.replace(/[\r\n]+/g, " ");
+      out += pre ? raw.replace(/\r\n?/g, "\n") : raw.replace(/[\r\n]+/g, " ");
       return;
     }
     if (n.nodeType !== Node.ELEMENT_NODE) return;
@@ -182,7 +206,7 @@ function renderedText(root: Node, keep: (n: Node) => boolean = () => true): stri
     const isBlock = n !== root && BLOCK_TAGS.has(tag);
     const beforeLen = out.length;
     if (isBlock && out && !out.endsWith("\n")) out += "\n";
-    const inPre = pre || tag === "PRE";
+    const inPre = stepWhiteSpace(el, pre);
     for (let c = n.firstChild; c; c = c.nextSibling) walk(c, inPre);
     if (out.length === beforeLen + 1 && isBlock && out.endsWith("\n")) {
       out = out.slice(0, beforeLen);
@@ -190,7 +214,7 @@ function renderedText(root: Node, keep: (n: Node) => boolean = () => true): stri
       out += "\n";
     }
   };
-  walk(root, false);
+  walk(root, ancestorPreservesNewlines(root.parentElement));
   return out.trim();
 }
 
@@ -286,12 +310,15 @@ export function foldQuotes(html: string): string {
       while (start.previousSibling && isInlineAttrPart(start.previousSibling)) {
         start = start.previousSibling;
       }
+      const parentPre = ancestorPreservesNewlines(cur.parentElement);
       let inlineText = "";
       for (let n: ChildNode | null = start; ; n = n.nextSibling) {
         if (n) {
           inlineText +=
             n.nodeType === Node.TEXT_NODE
-              ? (n.textContent ?? "").replace(/[\r\n]+/g, " ")
+              ? parentPre
+                ? (n.textContent ?? "").replace(/\r\n?/g, "\n")
+                : (n.textContent ?? "").replace(/[\r\n]+/g, " ")
               : renderedText(n);
         }
         if (!n || n === cur) break;
@@ -455,6 +482,6 @@ export function buildSrcdoc(b: ReaderBody, t: Theme, systemDark = false): string
     `<meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}">` +
     '<meta charset="utf-8">' +
     `<style>${css}</style></head>` +
-    `<body data-scheme="${scheme}"><div id="godwit-body" class="${cls}"${auto ? " data-auto-dark" : ""}>${html ? (b.collapseQuotes ? foldQuotes(b.html) : b.html) : plainHTML(b.plain, b.collapseQuotes)}</div></body></html>`
+    `<body><div id="godwit-body" class="${cls}"${auto ? " data-auto-dark" : ""}>${html ? (b.collapseQuotes ? foldQuotes(b.html) : b.html) : plainHTML(b.plain, b.collapseQuotes)}</div></body></html>`
   );
 }

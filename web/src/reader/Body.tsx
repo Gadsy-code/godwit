@@ -316,16 +316,50 @@ function attach(
   }
   schedule();
 
-  // Quoted-text fold controls: sync accessible labels, collapse on rail click, and position the
-  // native-styled tooltip beside the hovered pill or rail.
-  const syncFoldLabels = () => {
+  // Quoted-text fold controls: sync accessible labels, ensure contrast on custom-background mail
+  // surfaces, collapse on rail click, and position the native-styled tooltip beside pill or rail.
+  const rgbaOf = (v: string): [number, number, number, number] | null => {
+    const m = v.match(/[\d.]+/g)?.map(Number);
+    return m && m.length >= 3 ? [m[0], m[1], m[2], m[3] ?? 1] : null;
+  };
+  const luma = (c: [number, number, number]) => (c[0] * 299 + c[1] * 587 + c[2] * 114) / 1000;
+  const syncFoldControls = () => {
+    const darkCanvas = doc.documentElement.style.colorScheme === "dark";
+    const baseBg: [number, number, number] = darkCanvas ? [10, 10, 10] : [255, 255, 255];
     for (const fold of doc.querySelectorAll<HTMLDetailsElement>("details.godwit-quote-fold")) {
-      fold
-        .querySelector("summary")
-        ?.setAttribute("aria-label", fold.open ? labels.collapse : labels.expand);
+      const summary = fold.querySelector<HTMLElement>("summary");
+      summary?.setAttribute("aria-label", fold.open ? labels.collapse : labels.expand);
+      const chain: HTMLElement[] = [];
+      for (let p = fold.parentElement; p; p = p.parentElement) chain.unshift(p);
+      let bg = baseBg;
+      for (const el of chain) {
+        const c = rgbaOf(win.getComputedStyle(el).backgroundColor);
+        if (c && c[3] > 0) {
+          bg = [
+            c[0] * c[3] + bg[0] * (1 - c[3]),
+            c[1] * c[3] + bg[1] * (1 - c[3]),
+            c[2] * c[3] + bg[2] * (1 - c[3]),
+          ];
+        }
+      }
+      if (summary) {
+        summary.style.removeProperty("color");
+        const fg = rgbaOf(win.getComputedStyle(summary).color);
+        if (fg) {
+          const bgL = luma(bg);
+          const fgL = luma([fg[0], fg[1], fg[2]]);
+          const override =
+            bgL < 110 && fgL < 140 ? "#fafafa" : bgL > 145 && fgL > 160 ? "#0a0a0a" : "";
+          if (override) {
+            summary.style.color = override;
+            const rail = fold.querySelector<HTMLElement>(".godwit-quote-rail");
+            if (rail) rail.style.color = override;
+          }
+        }
+      }
     }
   };
-  syncFoldLabels();
+  syncFoldControls();
   // Keep the 21 px tooltip inside the tight-fitted native WebView viewport at both edges.
   const placeTip = (x: number, anchorY: number, open: boolean) => {
     const vh = window.innerHeight;
@@ -349,7 +383,7 @@ function attach(
     doc,
     "toggle",
     () => {
-      syncFoldLabels();
+      syncFoldControls();
       setTip(null);
       contentChanged();
     },

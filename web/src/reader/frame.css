@@ -13,53 +13,6 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
-body {
-  --godwit-quote-fg: rgba(10, 10, 10, 0.52);
-  --godwit-quote-fg-hover: rgba(10, 10, 10, 0.88);
-  --godwit-quote-bg: rgba(10, 10, 10, 0.035);
-  --godwit-quote-bg-hover: rgba(10, 10, 10, 0.08);
-  --godwit-quote-bg-open: rgba(10, 10, 10, 0.055);
-  --godwit-quote-border: rgba(10, 10, 10, 0.12);
-  --godwit-quote-border-hover: rgba(10, 10, 10, 0.24);
-  --godwit-quote-line: rgba(10, 10, 10, 0.09);
-  --godwit-quote-line-hover: rgba(10, 10, 10, 0.18);
-  --godwit-quote-rail: rgba(10, 10, 10, 0.13);
-  --godwit-quote-rail-hover: rgba(10, 10, 10, 0.48);
-  --godwit-quote-ring: rgba(10, 10, 10, 0.22);
-}
-
-body[data-scheme="dark"] {
-  --godwit-quote-fg: rgba(250, 250, 250, 0.62);
-  --godwit-quote-fg-hover: rgba(250, 250, 250, 0.95);
-  --godwit-quote-bg: rgba(255, 255, 255, 0.055);
-  --godwit-quote-bg-hover: rgba(255, 255, 255, 0.12);
-  --godwit-quote-bg-open: rgba(255, 255, 255, 0.085);
-  --godwit-quote-border: rgba(255, 255, 255, 0.15);
-  --godwit-quote-border-hover: rgba(255, 255, 255, 0.28);
-  --godwit-quote-line: rgba(255, 255, 255, 0.1);
-  --godwit-quote-line-hover: rgba(255, 255, 255, 0.2);
-  --godwit-quote-rail: rgba(255, 255, 255, 0.16);
-  --godwit-quote-rail-hover: rgba(255, 255, 255, 0.58);
-  --godwit-quote-ring: rgba(255, 255, 255, 0.28);
-}
-
-@media (prefers-color-scheme: dark) {
-  body[data-scheme="light dark"] {
-    --godwit-quote-fg: rgba(250, 250, 250, 0.62);
-    --godwit-quote-fg-hover: rgba(250, 250, 250, 0.95);
-    --godwit-quote-bg: rgba(255, 255, 255, 0.055);
-    --godwit-quote-bg-hover: rgba(255, 255, 255, 0.12);
-    --godwit-quote-bg-open: rgba(255, 255, 255, 0.085);
-    --godwit-quote-border: rgba(255, 255, 255, 0.15);
-    --godwit-quote-border-hover: rgba(255, 255, 255, 0.28);
-    --godwit-quote-line: rgba(255, 255, 255, 0.1);
-    --godwit-quote-line-hover: rgba(255, 255, 255, 0.2);
-    --godwit-quote-rail: rgba(255, 255, 255, 0.16);
-    --godwit-quote-rail-hover: rgba(255, 255, 255, 0.58);
-    --godwit-quote-ring: rgba(255, 255, 255, 0.28);
-  }
-}
-
 /* Wide content scrolls sideways; the page reports its height to native.
    Long words break only where they overflow: breaking anywhere would let a table column
    shrink to one letter. */
@@ -92,7 +45,7 @@ body[data-scheme="dark"] {
 :where(#godwit-body blockquote) {
   margin: 8px 0;
   padding-left: 12px;
-  border-left: 2px solid var(--godwit-quote-rail);
+  border-left: 2px solid rgba(127, 127, 127, 0.28);
 }
 
 /* Keep theme defaults weaker than the email's own text colours. */
@@ -180,37 +133,45 @@ body[data-scheme="dark"] {
   height: 18px;
   flex-shrink: 0;
   border-radius: 999px;
-  border: 1px solid var(--godwit-quote-border);
-  background: var(--godwit-quote-bg);
-  color: var(--godwit-quote-fg);
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  background: color-mix(in srgb, currentColor 5%, transparent);
+  color: inherit;
   cursor: pointer;
   pointer-events: auto;
   transition:
     background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
+    border-color 120ms ease;
+}
+
+#godwit-body .godwit-quote-pill > svg {
+  opacity: 0.62;
+  transition: opacity 120ms ease;
 }
 
 #godwit-body .godwit-quote-pill:hover {
-  background: var(--godwit-quote-bg-hover);
-  border-color: var(--godwit-quote-border-hover);
-  color: var(--godwit-quote-fg-hover);
+  background: color-mix(in srgb, currentColor 11%, transparent);
+  border-color: color-mix(in srgb, currentColor 30%, transparent);
+}
+
+#godwit-body .godwit-quote-pill:hover > svg {
+  opacity: 0.95;
 }
 
 #godwit-body .godwit-quote-fold > summary:focus-visible .godwit-quote-pill {
-  border-color: var(--godwit-quote-border-hover);
-  box-shadow: 0 0 0 3px var(--godwit-quote-ring);
+  border-color: color-mix(in srgb, currentColor 32%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent);
 }
 
 #godwit-body .godwit-quote-line {
   flex: 1;
   height: 1px;
-  background: var(--godwit-quote-line);
-  transition: background-color 120ms ease;
+  background: currentColor;
+  opacity: 0.12;
+  transition: opacity 120ms ease;
 }
 
 #godwit-body .godwit-quote-pill:hover + .godwit-quote-line {
-  background: var(--godwit-quote-line-hover);
+  opacity: 0.22;
 }
 
 #godwit-body .godwit-quote-up {
@@ -222,11 +183,11 @@ body[data-scheme="dark"] {
 }
 
 #godwit-body .godwit-quote-fold[open] > summary .godwit-quote-pill {
-  background: var(--godwit-quote-bg-open);
+  background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
 #godwit-body .godwit-quote-fold[open] > summary .godwit-quote-pill:hover {
-  background: var(--godwit-quote-bg-hover);
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 #godwit-body .godwit-quote-fold[open] > summary .godwit-quote-dots {
@@ -240,14 +201,6 @@ body[data-scheme="dark"] {
 #godwit-body .godwit-quote-body {
   position: relative;
   padding-left: 14px;
-}
-
-:where(#godwit-body.godwit-light .godwit-quote-body) {
-  color: #525252;
-}
-
-:where(#godwit-body.godwit-dark .godwit-quote-body) {
-  color: #a3a3a3;
 }
 
 /* The outer quote rail already marks the first quote level; keep deeper nested quotes indented. */
@@ -278,12 +231,13 @@ body[data-scheme="dark"] {
   height: 100%;
   margin-left: 1px;
   border-radius: 2px;
-  background: var(--godwit-quote-rail);
-  transition: background-color 120ms ease;
+  background: currentColor;
+  opacity: 0.16;
+  transition: opacity 120ms ease;
 }
 
 #godwit-body .godwit-quote-rail:hover .godwit-quote-rail-line {
-  background: var(--godwit-quote-rail-hover);
+  opacity: 0.55;
 }
 
 @media print {

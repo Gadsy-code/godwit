@@ -1325,3 +1325,19 @@ test("quote fold controls keep CSS states in auto-dark mode, show tooltips and c
   expect(fold.open).toBe(false);
   expect(document.querySelector("iframe")?.style.height).toBe("80px");
 });
+
+test("quote fold controls stay readable on naturally dark HTML surfaces in light mode", async () => {
+  for (const html of [
+    '<div id="surface" style="background:#000;color:#fff"><p>Reply</p><blockquote>Quote</blockquote></div>',
+    '<div id="surface" style="background:#000"><p style="color:#fff">Reply</p><blockquote style="color:#ccc">Quote</blockquote></div>',
+  ]) {
+    cleanup();
+    const { doc, win } = await start(body(1, html, { theme, collapseQuotes: true }));
+    const pill = doc.querySelector(".godwit-quote-pill") as HTMLElement;
+    const icon = pill.querySelector("svg") as unknown as HTMLElement;
+    const fg = channels(win.getComputedStyle(pill).color);
+    const op = Number(win.getComputedStyle(icon).opacity || 1);
+    const composited = fg.slice(0, 3).map((v) => v * op); // over #000
+    expect(Math.min(...composited)).toBeGreaterThan(140); // >= 6:1 against #000
+  }
+});
