@@ -372,6 +372,21 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
   expect(fontZero?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
   expect(fontZero?.textContent).toContain("Do not pay yet.");
 
+  // <center> is a block boundary, so centered sender text before an inline attribution stays out.
+  const centered = folded({
+    html: "<p>Hi</p><center>Do not pay yet.</center>On Tue, Bob wrote:<br><blockquote>Old request</blockquote>",
+  });
+  expect(centered?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
+  expect(centered?.textContent).toContain("Do not pay yet.");
+  expect(centered?.querySelector("details")?.textContent).toContain("On Tue, Bob wrote:");
+
+  // A positive min-height overrides height:0, keeping the overflow:hidden block visible outside.
+  const minHeightVisible = folded({
+    html: '<p>Hi</p><p>On Tue, Bob wrote:</p><div style="height:0;min-height:20px;overflow:hidden">Do not pay yet.</div><blockquote>Old request</blockquote>',
+  });
+  expect(minHeightVisible?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
+  expect(minHeightVisible?.textContent).toContain("Do not pay yet.");
+
   // Bare-text/inline attribution inside a reply container folds with the quote while keeping reply text out.
   const inlineAttr = folded({
     html: '<div>Thanks!<br><br>On Tue, <span data-href="mailto:b@x">Bob</span> wrote:<br><blockquote>Original</blockquote></div>',

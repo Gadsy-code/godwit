@@ -1181,8 +1181,18 @@ func TestReaderBodyCarriesCollapseQuotes(t *testing.T) {
 	assert.False(t, unfolded.CollapseQuotes)
 	assert.Greater(t, unfolded.Version, cached.Version)
 
+	// Opening a new message while an async settings save is still pending in the DB (DB still has
+	// CollapseQuotes: true, while in-memory SettingsChanged already flipped to false, or vice versa)
+	// uses the latest in-memory SettingsChanged snapshot.
 	m2 := f.remoteMail(t, "Re: dinner", "https://tracker.example/pixel2.png")
 	b, err = f.p.Load(pageCtx(f.page(m2.ID)))
 	require.NoError(t, err)
-	assert.True(t, b.CollapseQuotes, "persisted DB setting still applies to newly built messages when no newer SettingsChanged raced")
+	assert.False(t, b.CollapseQuotes, "newly started build honors pending SettingsChanged snapshot ahead of stale DB")
+
+	st.CollapseQuotes = true
+	f.r.SettingsChanged(st) // DB was not updated yet
+	m3 := f.remoteMail(t, "Re: brunch", "https://tracker.example/pixel3.png")
+	b, err = f.p.Load(pageCtx(f.page(m3.ID)))
+	require.NoError(t, err)
+	assert.True(t, b.CollapseQuotes)
 }

@@ -118,13 +118,12 @@ type Reader struct {
 	getAvatar  func(ctx context.Context, svc *core.Service, id int64) (core.Avatar, error)
 	getInline  func(ctx context.Context, svc *core.Service, id int64, each func(cid string, a mail.Attachment)) error
 
-	mu          sync.Mutex
-	svc         *core.Service
-	version     int64             // the last version given out
-	settingsSeq int64             // bumped on SettingsChanged so in-flight builds see newer preferences
-	settings    *core.Settings    // latest SettingsChanged snapshot
-	bound       map[any]int64     // page key → its message
-	msgs        map[int64]*bodyOf // per message with a page bound
+	mu       sync.Mutex
+	svc      *core.Service
+	version  int64             // the last version given out
+	settings *core.Settings    // latest in-memory SettingsChanged snapshot (ahead of async DB saves)
+	bound    map[any]int64     // page key → its message
+	msgs     map[int64]*bodyOf // per message with a page bound
 }
 
 // bodyOf is a bound message's state.
@@ -272,7 +271,6 @@ func (r *Reader) SettingsChanged(st core.Settings) {
 	defer r.mu.Unlock()
 	cp := st
 	r.settings = &cp
-	r.settingsSeq++
 	for message, s := range r.msgs {
 		if s.original == nil || s.body == nil {
 			continue
@@ -378,9 +376,6 @@ func (r *Reader) reload(message int64, change func(*bodyOf)) {
 
 // build keeps the body only while its build generation v is current.
 func (r *Reader) build(ctx context.Context, svc *core.Service, message, v int64, allowed bool) (ReaderBody, error) {
-	r.mu.Lock()
-	seq := r.settingsSeq
-	r.mu.Unlock()
 	m, err := r.getMessage(ctx, svc, message, allowed)
 	if err != nil {
 		return ReaderBody{}, err
@@ -400,7 +395,7 @@ func (r *Reader) build(ctx context.Context, svc *core.Service, message, v int64,
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.settingsSeq != seq && r.settings != nil {
+	if r.settings != nil {
 		b.Theme = ThemeOf(*r.settings)
 		b.Locale = i18n.Language()
 		b.CollapseQuotes = r.settings.CollapseQuotes

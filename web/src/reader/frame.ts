@@ -117,6 +117,8 @@ function lastStyleValue(style: string, prop: string): string | null {
   return val;
 }
 
+const isZeroLength = (v: string | null) => v !== null && /^0(?:\.0+)?(?:[a-z%]+)?$/.test(v);
+
 // Irreversible subtree hiding: no descendant override can make anything inside visible.
 function isHiddenSubtree(el: Element): boolean {
   if (el.tagName === "STYLE" || el.tagName === "SCRIPT") return true;
@@ -125,10 +127,20 @@ function isHiddenSubtree(el: Element): boolean {
   if (disp === "none" || (el.hasAttribute("hidden") && !disp)) return true;
   const op = lastStyleValue(st, "opacity");
   if (op !== null && Number(op) === 0) return true;
+  // Zero-height overflow:hidden preheaders clip descendants only when neither min-height nor
+  // vertical padding re-opens the clip box.
+  const h = lastStyleValue(st, "height");
+  const maxH = lastStyleValue(st, "max-height");
+  const minH = lastStyleValue(st, "min-height");
+  const ov = lastStyleValue(st, "overflow-y") ?? lastStyleValue(st, "overflow");
+  const hasPadding =
+    /(?:^|[;\s])padding(?:-(?:top|bottom))?\s*:\s*(?!0(?:\.0+)?(?:[a-z%]+)?(?:\s|$|;|!))/i.test(st);
   return (
-    /(?:^|[;\s])(?:max-)?height\s*:\s*0(?:\.0+)?(?:[a-z%]+)?(?:\s*!important)?\s*(?:;|$)/i.test(
-      st,
-    ) && /(?:^|[;\s])overflow(?:-y)?\s*:\s*hidden(?:\s*!important)?\s*(?:;|$)/i.test(st)
+    (isZeroLength(maxH) || isZeroLength(h)) &&
+    (minH === null || isZeroLength(minH)) &&
+    !hasPadding &&
+    ov !== null &&
+    ov.split(/\s+/).includes("hidden")
   );
 }
 
@@ -139,37 +151,57 @@ function isInsideHidden(el: Element): boolean {
   return false;
 }
 
-const BLOCK_TAGS = new Set([
-  "ADDRESS",
-  "ARTICLE",
-  "ASIDE",
-  "BLOCKQUOTE",
-  "DIV",
-  "DL",
-  "DT",
-  "DD",
-  "FIELDSET",
-  "FIGCAPTION",
-  "FIGURE",
-  "FOOTER",
-  "H1",
-  "H2",
-  "H3",
-  "H4",
-  "H5",
-  "H6",
-  "HEADER",
-  "HR",
-  "LI",
-  "MAIN",
-  "NAV",
-  "OL",
-  "P",
-  "PRE",
-  "SECTION",
-  "TABLE",
-  "TR",
-  "UL",
+// Whitelist of HTML phrasing tags that participate in inline flow by default; everything else
+// (DIV, P, CENTER, TABLE, DETAILS, headings, lists, etc.) creates a block boundary unless styled
+// with an inline display value.
+const INLINE_TAGS = new Set([
+  "A",
+  "ABBR",
+  "ACRONYM",
+  "B",
+  "BDI",
+  "BDO",
+  "BIG",
+  "CITE",
+  "CODE",
+  "DATA",
+  "DEL",
+  "DFN",
+  "EM",
+  "FONT",
+  "I",
+  "INS",
+  "KBD",
+  "MARK",
+  "Q",
+  "RP",
+  "RT",
+  "RUBY",
+  "S",
+  "SAMP",
+  "SMALL",
+  "SPAN",
+  "STRIKE",
+  "STRONG",
+  "SUB",
+  "SUP",
+  "TIME",
+  "TT",
+  "U",
+  "VAR",
+  "WBR",
+]);
+
+const NON_BLOCK_REPLACED = new Set([
+  "BR",
+  "IMG",
+  "SVG",
+  "VIDEO",
+  "IFRAME",
+  "STYLE",
+  "SCRIPT",
+  "AREA",
+  "MAP",
 ]);
 
 const INLINE_DISPLAYS = new Set([
@@ -188,7 +220,7 @@ function isBlockBox(el: Element): boolean {
     const first = disp.split(/\s+/)[0];
     return !INLINE_DISPLAYS.has(disp) && first !== "inline";
   }
-  return BLOCK_TAGS.has(el.tagName);
+  return !INLINE_TAGS.has(el.tagName) && !NON_BLOCK_REPLACED.has(el.tagName);
 }
 
 const PRE_WS_VALUES = new Set(["pre", "pre-wrap", "pre-line", "break-spaces"]);
