@@ -153,9 +153,12 @@ function isHiddenSubtree(el: Element): boolean {
   if (op !== null && Number(op) === 0) return true;
   // Zero-height overflow:hidden preheaders clip descendants only when neither min-height nor
   // vertical padding re-opens the clip box.
+  // A plain inline box ignores height and does not clip: only block or inline-block boxes do.
+  const clips = disp !== null ? disp !== "inline" && disp !== "contents" : isBlockBox(el);
   const minH = styleValue(el, "min-height");
   const ov = styleValue(el, "overflow-y") ?? styleValue(el, "overflow");
   return (
+    clips &&
     (isZeroLength(styleValue(el, "max-height")) || isZeroLength(styleValue(el, "height"))) &&
     (minH === null || isZeroLength(minH)) &&
     !hasVerticalPadding(el) &&
@@ -451,21 +454,11 @@ export function foldQuotes(html: string): string {
       while (start.previousSibling && inlineLead(start.previousSibling)) {
         start = start.previousSibling;
       }
-      const parentState = ancestorTextState(cur.parentElement);
-      let inlineText = "";
-      for (let n: ChildNode | null = start; ; n = n.nextSibling) {
-        if (n) {
-          inlineText +=
-            n.nodeType === Node.TEXT_NODE
-              ? parentState.visHidden || parentState.zeroFont
-                ? ""
-                : parentState.pre
-                  ? (n.textContent ?? "").replace(/\r\n?/g, "\n")
-                  : (n.textContent ?? "").replace(/[\r\n]+/g, " ")
-              : renderedText(n);
-        }
-        if (!n || n === cur) break;
-      }
+      // Rendered as one run under its parent, so a newline between siblings is not trimmed away.
+      const run: ChildNode[] = [];
+      for (let n: ChildNode | null = start; n; n = n === cur ? null : n.nextSibling) run.push(n);
+      const parent = cur.parentElement as Element;
+      const inlineText = renderedText(parent, (n) => run.some((r) => r === n || r.contains(n)));
       if (isAttribution(inlineText)) first = start;
     }
   }

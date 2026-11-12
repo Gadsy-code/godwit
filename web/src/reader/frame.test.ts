@@ -394,6 +394,20 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
   expect(paddedVisible?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
   expect(paddedVisible?.textContent).toContain("Do not pay yet.");
 
+  // An inline span ignores height:0, so it does not clip and its text stays visible outside.
+  const inlineClip = folded({
+    html: '<p>Hi</p><p>On Tue, Bob wrote:</p><span style="height:0;overflow:hidden">Do not pay yet.</span><blockquote>Old request</blockquote>',
+  });
+  expect(inlineClip?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
+  expect(inlineClip?.textContent).toContain("Do not pay yet.");
+
+  // A preserved newline between sibling spans splits the run into two lines, not one attribution.
+  const preSiblings = folded({
+    html: '<div style="white-space:pre-wrap"><p>Hi</p><span>Do not pay yet.\n</span><span>On Tue, Bob wrote:</span><blockquote>Old request</blockquote></div>',
+  });
+  expect(preSiblings?.querySelector("details")?.textContent).not.toContain("Do not pay yet.");
+  expect(preSiblings?.textContent).toContain("Do not pay yet.");
+
   // A stylesheet can make class-styled lines blocks: such a lead stays outside the fold.
   const sheetBlocks = folded({
     html: '<style>.line{display:block}</style><p>Hi</p><div><span class="line">Do not pay yet.</span><span class="line">On Tue, Bob wrote:</span></div><blockquote>Old request</blockquote>',
