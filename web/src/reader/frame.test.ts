@@ -322,6 +322,23 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
       html: "<div><div><p>On Tue, Bob wrote:</p></div><blockquote>Original</blockquote></div>",
     })?.querySelector("details"),
   ).toBeNull();
+  // Hidden preheaders before a quote-only message do not count as sender-written prose.
+  expect(
+    folded({
+      html: '<div style="display:none">preview</div><blockquote>Original</blockquote>',
+    })?.querySelector("details"),
+  ).toBeNull();
+  expect(
+    folded({
+      html: '<div style="max-height:0;overflow:hidden">preview</div><p>On Tue, Bob wrote:</p><blockquote>Original</blockquote>',
+    })?.querySelector("details"),
+  ).toBeNull();
+  // Conversely, a hidden trailing message ID after a real reply's quote still lets the quote fold.
+  expect(
+    folded({
+      html: '<p>Thanks!</p><blockquote>Original</blockquote><span style="display:none">Message ID: x</span>',
+    })?.querySelector("details"),
+  ).not.toBeNull();
 
   // Bare-text/inline attribution inside a reply container folds with the quote while keeping reply text out.
   const inlineAttr = folded({

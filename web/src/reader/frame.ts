@@ -107,16 +107,25 @@ export function plainHTML(text: string, fold = false): string {
   );
 }
 
-// The words of a node, left out of the count when they are a stylesheet's or a script's.
-const visibleWords = (doc: Document, root: Node, keep: (n: Node) => boolean): string => {
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let out = "";
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    const tag = n.parentElement?.tagName;
-    if (tag !== "STYLE" && tag !== "SCRIPT" && keep(n)) out += n.textContent;
+const HIDDEN_STYLE_RE =
+  /(?:^|[;\s])(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0+)?|font-size\s*:\s*0(?:[a-z%]+)?)(?:\s*!important)?\s*(?:;|$)/i;
+
+function isHiddenElement(el: Element): boolean {
+  if (el.tagName === "STYLE" || el.tagName === "SCRIPT" || el.hasAttribute("hidden")) return true;
+  const st = el.getAttribute("style") ?? "";
+  if (HIDDEN_STYLE_RE.test(st)) return true;
+  return (
+    /(?:^|[;\s])(?:max-)?height\s*:\s*0(?:[a-z%]+)?(?:\s*!important)?\s*(?:;|$)/i.test(st) &&
+    /(?:^|[;\s])overflow(?:-y)?\s*:\s*hidden(?:\s*!important)?\s*(?:;|$)/i.test(st)
+  );
+}
+
+function isInsideHidden(el: Element): boolean {
+  for (let p: Element | null = el; p; p = p.parentElement) {
+    if (isHiddenElement(p)) return true;
   }
-  return out.trim();
-};
+  return false;
+}
 
 const BLOCK_TAGS = new Set([
   "ADDRESS",
@@ -151,30 +160,35 @@ const BLOCK_TAGS = new Set([
   "UL",
 ]);
 
-// Visible text of root with <br> and block boundaries preserved as "\n" (while folding raw source
-// line wraps inside text nodes to spaces, as HTML layout does), so multi-line blocks are never
-// concatenated into a single synthetic attribution line.
+// Visible text of root with <br> and block boundaries preserved as "\n" (while skipping hidden
+// subtrees and folding raw source line wraps inside text nodes to spaces, as HTML layout does).
 function renderedText(root: Node, keep: (n: Node) => boolean = () => true): string {
   let out = "";
   const walk = (n: Node, pre: boolean) => {
-    if (!keep(n)) return;
     if (n.nodeType === Node.TEXT_NODE) {
+      if (!keep(n)) return;
       const raw = n.textContent ?? "";
       out += pre ? raw : raw.replace(/[\r\n]+/g, " ");
       return;
     }
     if (n.nodeType !== Node.ELEMENT_NODE) return;
-    const tag = (n as Element).tagName;
-    if (tag === "STYLE" || tag === "SCRIPT") return;
+    const el = n as Element;
+    if (isHiddenElement(el)) return;
+    const tag = el.tagName;
     if (tag === "BR") {
-      out += "\n";
+      if (keep(n)) out += "\n";
       return;
     }
     const isBlock = n !== root && BLOCK_TAGS.has(tag);
+    const beforeLen = out.length;
     if (isBlock && out && !out.endsWith("\n")) out += "\n";
     const inPre = pre || tag === "PRE";
     for (let c = n.firstChild; c; c = c.nextSibling) walk(c, inPre);
-    if (isBlock && out && !out.endsWith("\n")) out += "\n";
+    if (out.length === beforeLen + 1 && isBlock && out.endsWith("\n")) {
+      out = out.slice(0, beforeLen);
+    } else if (isBlock && out.length > beforeLen && !out.endsWith("\n")) {
+      out += "\n";
+    }
   };
   walk(root, false);
   return out.trim();
@@ -230,12 +244,19 @@ function isBlankSpacer(n: ChildNode): boolean {
  */
 export function foldQuotes(html: string): string {
   const doc = new DOMParser().parseFromString(`<!doctype html><body>${html}`, "text/html");
-  const last = [...doc.body.querySelectorAll(QUOTE)]
-    .filter((q) => !q.parentElement?.closest(QUOTE))
+  const visibleQuotes = [...doc.body.querySelectorAll(QUOTE)].filter((q) => !isInsideHidden(q));
+  const last = visibleQuotes
+    .filter((q) => {
+      let p = q.parentElement;
+      while (p) {
+        if (p.matches(QUOTE) && !isInsideHidden(p)) return false;
+        p = p.parentElement;
+      }
+      return true;
+    })
     .at(-1);
   if (!last) return html;
-  const after = visibleWords(
-    doc,
+  const after = renderedText(
     doc.body,
     (n) =>
       !last.contains(n) && !!(last.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING),
@@ -245,7 +266,13 @@ export function foldQuotes(html: string): string {
   let first: ChildNode = last;
   if (last.tagName === "BLOCKQUOTE") {
     let cur = last.previousSibling;
-    while (cur && isBlankSpacer(cur)) cur = cur.previousSibling;
+    while (
+      cur &&
+      (isBlankSpacer(cur) ||
+        (cur.nodeType === Node.ELEMENT_NODE && isHiddenElement(cur as Element)))
+    ) {
+      cur = cur.previousSibling;
+    }
     if (
       cur?.nodeType === Node.ELEMENT_NODE &&
       ["P", "DIV"].includes((cur as Element).tagName) &&
@@ -261,7 +288,12 @@ export function foldQuotes(html: string): string {
       }
       let inlineText = "";
       for (let n: ChildNode | null = start; ; n = n.nextSibling) {
-        if (n) inlineText += (n.textContent ?? "").replace(/[\r\n]+/g, " ");
+        if (n) {
+          inlineText +=
+            n.nodeType === Node.TEXT_NODE
+              ? (n.textContent ?? "").replace(/[\r\n]+/g, " ")
+              : renderedText(n);
+        }
         if (!n || n === cur) break;
       }
       if (isAttribution(inlineText)) first = start;
@@ -271,10 +303,9 @@ export function foldQuotes(html: string): string {
   const before = renderedText(
     doc.body,
     (n) =>
-      n === doc.body ||
-      (!first.contains(n) &&
-        n !== first &&
-        !!(first.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING)),
+      !first.contains(n) &&
+      n !== first &&
+      !!(first.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING),
   );
   if (before === "" || isAttribution(before)) return html;
 
@@ -288,6 +319,7 @@ export function foldQuotes(html: string): string {
   while (true) {
     rootQuote.setAttribute("data-quote-root", "");
     const directQuotes = [...rootQuote.querySelectorAll(QUOTE)].filter((q) => {
+      if (isInsideHidden(q)) return false;
       let p = q.parentElement;
       while (p && p !== rootQuote) {
         if (p.matches(QUOTE)) return false;
@@ -303,8 +335,7 @@ export function foldQuotes(html: string): string {
         !inner.contains(n) &&
         !!(inner.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING),
     );
-    const tailText = visibleWords(
-      doc,
+    const tailText = renderedText(
       rootQuote,
       (n) =>
         !inner.contains(n) &&
