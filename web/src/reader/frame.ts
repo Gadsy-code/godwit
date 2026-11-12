@@ -349,6 +349,30 @@ function isBlankSpacer(n: ChildNode): boolean {
   );
 }
 
+// A selector list split at its top-level commas: not those in quotes, [attributes] or :is(…).
+function splitSelectorList(list: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote = "";
+  let from = 0;
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = "";
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === "\\") i++;
+    else if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (c === "," && depth === 0) {
+      out.push(list.slice(from, i));
+      from = i + 1;
+    }
+  }
+  out.push(list.slice(from));
+  return out;
+}
+
 function isEffectivelyInvisible(el: Element): boolean {
   if (isHiddenSubtree(el)) return true;
   if (renderedText(el) !== "") return false;
@@ -526,7 +550,7 @@ export function foldQuotes(html: string): string {
       return false; // not a selector the browser applies either
     }
   };
-  if (selectors.some((list) => list.split(",").some(reaches))) return html;
+  if (selectors.some((list) => splitSelectorList(list).some(reaches))) return html;
   return doc.body.innerHTML;
 }
 

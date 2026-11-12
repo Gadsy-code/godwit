@@ -426,6 +426,12 @@ test("a preceding single-line attribution folds with a bare blockquote, ordinary
       })?.querySelector("details"),
     ).toBeNull();
   }
+  // A comma inside a quoted attribute value does not split the selector list.
+  expect(
+    folded({
+      html: '<style>.mail[style*=","] span{display:none}</style><div class="mail" style="color:rgb(1,2,3)"><p>Reply</p><blockquote>Old</blockquote></div>',
+    })?.querySelector("details"),
+  ).toBeNull();
   expect(
     folded({
       html: '<style>#godwit-body .mail p{color:#333}</style><div class="mail"><p>Reply</p><blockquote>Old</blockquote></div>',
